@@ -1,6 +1,9 @@
 import { View, Text, Image, StyleSheet, StatusBar, TouchableOpacity } from 'react-native';
 import { MaterialDesignIcons } from '@react-native-vector-icons/material-design-icons';
 
+import FooterTerms from '../components/FooterTerms';
+import { colors } from '../constants/colors';
+
 function CreateAccount({ navigation }) {
   return (
     <>
@@ -8,6 +11,7 @@ function CreateAccount({ navigation }) {
 
       <View style={styles.container}>
         
+        {/* Cabeçalho */}
         <View style={styles.topo}>
           <TouchableOpacity 
             style={styles.backButton} 
@@ -27,9 +31,10 @@ function CreateAccount({ navigation }) {
         <Text style={styles.subtitle}>Comece criando uma nova conta gratuita</Text>
 
         <View style={styles.content}>
-
+          {/* Botão Primário: Email */}
           <TouchableOpacity
             style={[styles.button, styles.buttonPri]}
+            onPress={() => navigation?.navigate('CreateEmail')}
             activeOpacity={0.8}
           >
             <Text style={[styles.buttonText, styles.buttonTextPri]}>Continuar com email</Text>
@@ -37,6 +42,7 @@ function CreateAccount({ navigation }) {
 
           <Text style={styles.dividerText}>ou</Text>
 
+          {/* Botão Secundário: Google */}
           <TouchableOpacity
             style={[styles.button, styles.buttonSec]}
             activeOpacity={0.8}
@@ -50,14 +56,8 @@ function CreateAccount({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.footerContainer}>
-          <Text style={styles.footerText}>
-            Ao usar o Arroche você concorda com os{'\n'}
-            <Text style={styles.linkText} onPress={() => {}}>Termos</Text>
-            {' e a '}
-            <Text style={styles.linkText} onPress={() => {}}>Política de Privacidade.</Text>
-          </Text>
-        </View>
+        {/* Rodapé compartilhado */}
+        <FooterTerms />
 
       </View>
     </>
@@ -67,7 +67,7 @@ function CreateAccount({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.background,
   },
 
   topo: {
@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#27252E',
+    color: colors.text,
     textAlign: 'center',
   },
 
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   },
 
   subtitle: {
-    color: '#71717A',
+    color: colors.textSecondary,
     fontSize: 16,
     textAlign: 'center',
     marginTop: 8,
@@ -115,22 +115,22 @@ const styles = StyleSheet.create({
   },
 
   button: {
-    width: '80%',
-    paddingVertical: 14,
-    borderRadius: 10,
+    width: '90%',
+    paddingVertical: 15,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   buttonPri: {
-    backgroundColor: '#264A31',
+    backgroundColor: colors.primary,
     marginBottom: 16,
   },
 
   buttonSec: {
     backgroundColor: '#ffffff',
-    borderColor: '#C7C5CC',
+    borderColor: colors.border,
     borderWidth: 1.5,
     marginTop: 16,
   },
@@ -155,28 +155,9 @@ const styles = StyleSheet.create({
   },
 
   dividerText: {
-    color: '#71717A',
+    color: colors.textSecondary,
     fontSize: 16,
     textAlign: 'center',
-  },
-
-  footerContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 35,
-    paddingHorizontal: 25,
-  },
-
-  footerText: {
-    color: '#6B7280',
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-
-  linkText: {
-    color: '#1D61B0',
-    fontWeight: '500',
   },
 });
 

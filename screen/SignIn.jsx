@@ -1,8 +1,7 @@
-import { View, Text, Image, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, Image, StyleSheet, StatusBar, TouchableOpacity } from 'react-native';
 import { Link } from '@react-navigation/native';
-import { Button } from '@react-navigation/elements';
 
-function SingIn() {
+function SignIn({ navigation }) {
   return (
     <>
       <StatusBar hidden={true} />
@@ -17,17 +16,18 @@ function SingIn() {
 
         <View style={styles.content}>
 
-        <Image
-          source={require('../assets/logo-arroche.png')}
-          style={styles.logo}
-        />         
+          <Image
+            source={require('../assets/logo-arroche.png')}
+            style={styles.logo}
+          />         
 
-          <Button
-            screen={"CreateAccount"}
+          <TouchableOpacity
             style={styles.button}
+            onPress={() => navigation?.navigate('CreateAccount')}
+            activeOpacity={0.8}
           >
-            <Text style={styles.buttonText}> Criar uma conta </Text>
-          </Button>
+            <Text style={styles.buttonText}>Criar uma conta</Text>
+          </TouchableOpacity>
 
           <Link screen="Login" style={styles.link}> Já tem conta? <Text style={styles.bold}> Log in </Text> </Link>
 
@@ -60,11 +60,12 @@ const styles = StyleSheet.create({
   },
 
   button: {
-    width: '70%',
+    width: '90%',
     paddingVertical: 15,
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: '#fff',
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 10,
   },
 
@@ -80,15 +81,15 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
-  bold:{
-    fontWeight: "bold"
+  bold: {
+    fontWeight: 'bold',
   },
 
   logo: {
     height: 120,
     aspectRatio: 2380 / 1270,
     marginBottom: 45,
-  }
+  },
 });
 
-export default SingIn;
+export default SignIn;

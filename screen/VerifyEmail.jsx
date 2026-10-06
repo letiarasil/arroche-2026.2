@@ -5,10 +5,12 @@ import StepHeader from '../components/StepHeader';
 import ButtonContinue from '../components/ButtonContinue';
 import FooterTerms from '../components/FooterTerms';
 import { colors } from '../constants/colors';
+import { useAuth } from '../contexts/AuthContext';
 
 function VerifyEmail({ navigation, route }) {
   const [code, setCode] = useState(['', '', '', '', '']);
   const inputsRef = useRef([]);
+  const { login } = useAuth();
 
   // Pega o email vindo da tela anterior ou usa o fallback
   const userEmail = route?.params?.email || 'sarah.jansen@gmail.com';
@@ -78,11 +80,10 @@ function VerifyEmail({ navigation, route }) {
             </View>
           </View>
 
-          {/* Botão Continue */}
           <ButtonContinue
             disabled={isButtonDisabled}
             onPress={() => {
-              // Navegar para a etapa 3
+              login(); // Muda o estado para logado
             }}
           />
 

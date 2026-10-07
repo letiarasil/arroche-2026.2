@@ -82,7 +82,7 @@ function VerifyEmail({ navigation, route }) {
           <ButtonContinue
             disabled={isButtonDisabled}
             onPress={() => {
-              // Navegar para a etapa 3
+              navigation?.navigate('CreatePassword', { email: userEmail });
             }}
           />
 

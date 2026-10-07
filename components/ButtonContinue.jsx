@@ -1,18 +1,22 @@
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { colors } from '../constants/colors';
 
-function ButtonContinue({ onPress, disabled = false, title = 'Continue' }) {
+function ButtonContinue({ onPress, disabled = false, loading = false, title = 'Continue' }) {
   return (
     <TouchableOpacity
       style={[
         styles.button,
-        disabled && styles.buttonDisabled,
+        (disabled || loading) && styles.buttonDisabled,
       ]}
-      disabled={disabled}
+      disabled={disabled || loading}
       onPress={onPress}
       activeOpacity={0.8}
     >
-      <Text style={styles.buttonText}>{title}</Text>
+      {loading ? (
+        <ActivityIndicator color="#ffffff" size="small" />
+      ) : (
+        <Text style={styles.buttonText}>{title}</Text>
+      )}
     </TouchableOpacity>
   );
 }

@@ -9,4 +9,8 @@ export const colors = {
   link: '#1D61B0',
   progressActive: '#BEADFA',
   progressInactive: '#ECEFF1',
+  strengthWeak: '#EF4444',
+  strengthMedium: '#F59E0B',
+  strengthStrong: '#264A31',
+  petals: '#C8BAB1',
 };

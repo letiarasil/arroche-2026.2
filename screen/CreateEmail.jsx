@@ -9,7 +9,9 @@ import { colors } from '../constants/colors';
 function CreateEmail({ navigation }) {
   const [email, setEmail] = useState('');
 
-  const isButtonDisabled = email.trim().length === 0;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const isEmailValid = emailRegex.test(email.trim());
+  const isButtonDisabled = !isEmailValid;
 
   return (
     <>

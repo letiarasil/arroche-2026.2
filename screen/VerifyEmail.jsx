@@ -83,7 +83,7 @@ function VerifyEmail({ navigation, route }) {
           <ButtonContinue
             disabled={isButtonDisabled}
             onPress={() => {
-              login(); // Muda o estado para logado
+              navigation?.navigate('CreatePassword', { email: userEmail });
             }}
           />
 

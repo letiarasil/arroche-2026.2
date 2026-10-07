@@ -10,6 +10,11 @@ import Guias from "../screen/Guias";
 import Salvos from "../screen/Salvos";
 import Perfil from "../screen/Perfil";
 
+import CreatePassword from "../screen/CreatePassword";
+import AccountCreated from "../screen/AccountCreated";
+import Login from "../screen/Login";
+import LoginEmail from "../screen/LoginEmail";
+
 const Stack = createNativeStackNavigator() 
 
 function RootStack() {
@@ -28,10 +33,15 @@ function RootStack() {
             ) : (
                 // Telas para usuários não logados (fluxo de autenticação)
                 <>
-                    <Stack.Screen name="SignIn" component={SignIn} />
+                    <Stack.Screen name="SignIn" component={SignIn} /> 
                     <Stack.Screen name="CreateAccount" component={CreateAccount} />  
                     <Stack.Screen name="CreateEmail" component={CreateEmail} />  
-                    <Stack.Screen name="VerifyEmail" component={VerifyEmail} />  
+                    <Stack.Screen name="VerifyEmail" component={VerifyEmail} /> 
+                    <Stack.Screen name="CreatePassword" component={CreatePassword} />  
+                    <Stack.Screen name="AccountCreated" component={AccountCreated} />  
+                    <Stack.Screen name="Login" component={Login} />  
+                    <Stack.Screen name="LoginEmail" component={LoginEmail} /> 
+                     
                 </>
             )}
         </Stack.Navigator>

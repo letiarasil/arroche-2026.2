@@ -1,24 +1,26 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import { Feather, FontAwesome5 } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
+import { Mountain } from 'lucide-react-native';
 import { colors } from '../constants/colors';
+import { VazadoIcon } from './icons/VazadoIcon';
 
 const Menu = ({ activeTab, navigation }) => {
-  // Lista das abas com suas rotas correspondentes e ícones.
-  // Usamos Feather para a maioria e FontAwesome5 para a montanha (Guias).
   const tabs = [
-    { name: 'Trilhas', route: 'Trilhas', iconType: 'Feather', iconName: 'search' },
-    { name: 'Guias', route: 'Guias', iconType: 'FontAwesome5', iconName: 'mountain' },
+    { name: 'Trilhas', route: 'Trilhas', iconType: 'LucideMountain' },
+    { name: 'Guias', route: 'Guias', iconType: 'Vazado' },
     { name: 'Salvos', route: 'Salvos', iconType: 'Feather', iconName: 'bookmark' },
     { name: 'Perfil', route: 'Perfil', iconType: 'Feather', iconName: 'user' },
   ];
 
   const renderIcon = (tab, isActive) => {
     const color = isActive ? colors.primary : colors.textSecondary;
-    if (tab.iconType === 'Feather') {
+    if (tab.iconType === 'LucideMountain') {
+      return <Mountain size={24} color={color} strokeWidth={2} />;
+    } else if (tab.iconType === 'Vazado') {
+      return <VazadoIcon size={24} color={color} />;
+    } else if (tab.iconType === 'Feather') {
       return <Feather name={tab.iconName} size={24} color={color} />;
-    } else if (tab.iconType === 'FontAwesome5') {
-      return <FontAwesome5 name={tab.iconName} size={20} color={color} />;
     }
     return null;
   };
@@ -31,7 +33,7 @@ const Menu = ({ activeTab, navigation }) => {
           <TouchableOpacity
             key={tab.name}
             style={styles.tabButton}
-            onPress={() => navigation.navigate(tab.route)}
+            onPress={() => navigation?.navigate(tab.route)}
             activeOpacity={0.7}
           >
             {renderIcon(tab, isActive)}
@@ -51,14 +53,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     alignItems: 'center',
     backgroundColor: '#ffffff',
-    paddingVertical: 12,
-    // Espaçamento extra na base para iPhones com Home Indicator
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12, 
+    paddingVertical: 10,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6', // Linha cinza bem sutil acima do menu
-    // Sombras
-    elevation: 8, 
-    shadowColor: '#000', 
+    borderTopColor: '#F3F4F6',
+    elevation: 8,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,

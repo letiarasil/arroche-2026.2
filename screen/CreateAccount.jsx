@@ -1,5 +1,5 @@
 import { View, Text, Image, StyleSheet, StatusBar, TouchableOpacity } from 'react-native';
-import { MaterialDesignIcons } from '@react-native-vector-icons/material-design-icons';
+import { Feather } from '@expo/vector-icons';
 
 import FooterTerms from '../components/FooterTerms';
 import { colors } from '../constants/colors';
@@ -18,9 +18,9 @@ function CreateAccount({ navigation }) {
             onPress={() => navigation?.goBack()}
             activeOpacity={0.7}
           >
-            <MaterialDesignIcons
+            <Feather
               name="arrow-left"
-              size={28}
+              size={24}
               color="#000"
             />
           </TouchableOpacity>

@@ -47,7 +47,12 @@ export default function Trilhas({ navigation }) {
             item={item}
             isSaved={!!savedTrails[item.id]}
             onToggleSave={toggleSave}
-            onPressVerMais={() => {}}
+            onPressVerMais={(trailItem) =>
+              navigation?.navigate('DetalhesEvento', {
+                eventId: trailItem.id,
+                item: trailItem,
+              })
+            }
           />
         ))}
       </ScrollView>

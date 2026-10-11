@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   BackHandler,
+  Keyboard,
 } from 'react-native';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
@@ -76,6 +77,44 @@ export default function DetalhesEvento({ navigation, route }) {
   // Estados para o Quadro de Avisos / Perguntas
   const [comments, setComments] = useState(event.comments || []);
   const [newComment, setNewComment] = useState('');
+
+  // Refs e estados para o ajuste do teclado
+  const mainScrollRef = useRef(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  // Refs e estados para o carrossel de fotos (botões fixos)
+  const galleryScrollRef = useRef(null);
+  const [galleryScrollX, setGalleryScrollX] = useState(0);
+  const [galleryLayoutWidth, setGalleryLayoutWidth] = useState(0);
+  const [galleryContentWidth, setGalleryContentWidth] = useState(0);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  // Monitora abertura e fechamento do teclado para rolar até o campo e evitar sobreposição
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onKeyboardShow = (e) => {
+      const height = e?.endCoordinates?.height || 280;
+      setKeyboardHeight(height);
+      setTimeout(() => {
+        mainScrollRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    };
+
+    const onKeyboardHide = () => {
+      setKeyboardHeight(0);
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onKeyboardShow);
+    const hideSub = Keyboard.addListener(hideEvent, onKeyboardHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Sincroniza estado caso volte da tela de pagamento com inscrição concluída
   useEffect(() => {
@@ -174,15 +213,30 @@ export default function DetalhesEvento({ navigation, route }) {
 
     setComments((prev) => [...prev, newEntry]);
     setNewComment('');
+    Keyboard.dismiss();
   };
 
-  // Botão de upload de fotos da trilha
-  const handlePhotoUploadPress = () => {
-    Alert.alert(
-      'Enviar Foto',
-      'Deseja enviar uma foto desta trilha? (Integração pronta para galeria do dispositivo e endpoint de upload)',
-      [{ text: 'Cancelar', style: 'cancel' }, { text: 'Simular Envio', onPress: () => Alert.alert('Sucesso', 'Foto simulada enviada com sucesso!') }]
-    );
+  // Rolagem suave do carrossel ao clicar nos botões fixos
+  const handleScrollLeft = () => {
+    const targetX = Math.max(0, galleryScrollX - 152);
+    galleryScrollRef.current?.scrollTo({ x: targetX, animated: true });
+  };
+
+  const handleScrollRight = () => {
+    const targetX = galleryScrollX + 152;
+    galleryScrollRef.current?.scrollTo({ x: targetX, animated: true });
+  };
+
+  const handleGalleryScroll = (e) => {
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const layoutW = e.nativeEvent.layoutMeasurement.width;
+    const contentW = e.nativeEvent.contentSize.width;
+
+    setGalleryScrollX(offsetX);
+    // Quando offsetX > 20, a primeira foto começa a ficar escondida -> exibe o botão da esquerda
+    setCanScrollLeft(offsetX > 20);
+    // Quando o carrossel alcança o final -> oculta o botão da direita
+    setCanScrollRight(offsetX + layoutW < contentW - 15);
   };
 
   const handleClose = () => {
@@ -216,10 +270,17 @@ export default function DetalhesEvento({ navigation, route }) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
+          ref={mainScrollRef}
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            keyboardHeight > 0 && {
+              paddingBottom: keyboardHeight + (Platform.OS === 'ios' ? 40 : 80),
+            },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {/* Header com Imagem de Capa do Evento */}
           <View style={styles.heroContainer}>
@@ -326,40 +387,66 @@ export default function DetalhesEvento({ navigation, route }) {
 
             {/* Galeria de Fotos */}
             <View style={styles.gallerySection}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.galleryScrollContent}
-              >
-                {/* Primeiro Card: Botão de Enviar Foto */}
-                <TouchableOpacity
-                  style={styles.uploadCard}
-                  onPress={handlePhotoUploadPress}
-                  activeOpacity={0.8}
+              <View style={styles.galleryCarouselWrapper}>
+                <ScrollView
+                  ref={galleryScrollRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.galleryScrollContent}
+                  onScroll={handleGalleryScroll}
+                  scrollEventThrottle={16}
+                  onContentSizeChange={(w) => {
+                    setGalleryContentWidth(w);
+                    if (galleryLayoutWidth > 0) {
+                      setCanScrollRight(galleryScrollX + galleryLayoutWidth < w - 15);
+                    } else {
+                      setCanScrollRight(w > 320);
+                    }
+                  }}
+                  onLayout={(e) => {
+                    const w = e.nativeEvent.layout.width;
+                    setGalleryLayoutWidth(w);
+                    if (galleryContentWidth > 0) {
+                      setCanScrollRight(galleryScrollX + w < galleryContentWidth - 15);
+                    }
+                  }}
                 >
-                  <View style={styles.uploadIconCircle}>
-                    <Feather name="upload" size={22} color="#6B7280" />
-                  </View>
-                </TouchableOpacity>
+                  {/* Cards de Fotos da Trilha (apenas fotos reais, sem opção de adicionar) */}
+                  {(event.photos || [])
+                    .filter((p) => !p.isUploadAction && p.image)
+                    .map((photo, index) => (
+                      <View key={photo.id || index} style={styles.photoCard}>
+                        <Image
+                          source={photo.image}
+                          style={styles.galleryImage}
+                          resizeMode="cover"
+                        />
+                      </View>
+                    ))}
+                </ScrollView>
 
-                {/* Cards de Fotos da Trilha */}
-                {(event.photos || [])
-                  .filter((p) => !p.isUploadAction)
-                  .map((photo, index) => (
-                    <View key={photo.id || index} style={styles.photoCard}>
-                      <Image
-                        source={photo.image}
-                        style={styles.galleryImage}
-                        resizeMode="cover"
-                      />
-                      {index === 0 && (
-                        <View style={styles.galleryNextIndicator}>
-                          <Feather name="chevron-right" size={14} color="#374151" />
-                        </View>
-                      )}
-                    </View>
-                  ))}
-              </ScrollView>
+                {/* Botão Fixo Esquerda: aparece quando a primeira foto fica escondida */}
+                {canScrollLeft && (
+                  <TouchableOpacity
+                    style={[styles.galleryNavButton, styles.galleryNavButtonLeft]}
+                    onPress={handleScrollLeft}
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="chevron-left" size={16} color="#374151" />
+                  </TouchableOpacity>
+                )}
+
+                {/* Botão Fixo Direita: fixo no lugar, sumindo quando o carrossel chegar ao final */}
+                {canScrollRight && (
+                  <TouchableOpacity
+                    style={[styles.galleryNavButton, styles.galleryNavButtonRight]}
+                    onPress={handleScrollRight}
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="chevron-right" size={16} color="#374151" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
 
             {/* Quadro de Avisos / Perguntas */}
@@ -399,6 +486,11 @@ export default function DetalhesEvento({ navigation, route }) {
                   onChangeText={setNewComment}
                   onSubmitEditing={handleSendComment}
                   returnKeyType="send"
+                  onFocus={() => {
+                    setTimeout(() => {
+                      mainScrollRef.current?.scrollToEnd({ animated: true });
+                    }, 150);
+                  }}
                 />
                 <TouchableOpacity
                   style={styles.sendButton}
@@ -479,8 +571,10 @@ export default function DetalhesEvento({ navigation, route }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Menu Inferior Fixo de Navegação */}
-      <Menu activeTab="Trilhas" navigation={navigation} />
+      {/* Menu Inferior Fixo de Navegação (oculto quando o teclado estiver aberto) */}
+      {keyboardHeight === 0 && (
+        <Menu activeTab="Trilhas" navigation={navigation} />
+      )}
 
       {/* ============================================================ */}
       {/* MODAL DE CONFIRMAÇÃO DA TRILHA (Image 3) */}
@@ -772,27 +866,12 @@ const styles = StyleSheet.create({
   gallerySection: {
     marginTop: 16,
   },
+  galleryCarouselWrapper: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
   galleryScrollContent: {
     paddingRight: 10,
-  },
-  uploadCard: {
-    width: 140,
-    height: 155,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  uploadIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#E5E7EB',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   photoCard: {
     width: 140,
@@ -807,22 +886,28 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  galleryNextIndicator: {
+  galleryNavButton: {
     position: 'absolute',
-    right: 8,
     top: '50%',
-    transform: [{ translateY: -12 }],
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    transform: [{ translateY: -14 }],
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 4,
+    zIndex: 20,
+  },
+  galleryNavButtonLeft: {
+    left: 8,
+  },
+  galleryNavButtonRight: {
+    right: 8,
   },
 
   /* Quadro de Avisos / Perguntas */

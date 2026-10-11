@@ -28,15 +28,19 @@ function LoginEmail({ navigation, route }) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [emailTouched, setEmailTouched] = useState(false);
 
+  // Formato exigido: algo@algo.algo (ex: usuario@dominio.com)
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const isEmailValid = emailRegex.test(email.trim());
+  const showEmailFormatError = emailTouched && email.trim().length > 0 && !isEmailValid;
 
   // O botão fica desabilitado quando o e-mail for inválido, a senha estiver vazia ou durante o carregamento
   const isButtonDisabled = !isEmailValid || password.length === 0 || isLoading;
 
   const handleEmailChange = (text) => {
     setEmail(text);
+    if (!emailTouched) setEmailTouched(true);
     if (hasError) setHasError(false);
   };
 
@@ -46,6 +50,12 @@ function LoginEmail({ navigation, route }) {
   };
 
   const handleLogin = () => {
+    // Guarda: bloqueia se o formato do e-mail não for válido
+    if (!isEmailValid) {
+      setEmailTouched(true);
+      return;
+    }
+
     setIsLoading(true);
     setHasError(false);
 

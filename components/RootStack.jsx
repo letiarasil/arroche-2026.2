@@ -2,7 +2,6 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useAuth } from "../contexts/AuthContext";
 
 import SignIn from "../screen/SignIn";
-import CreateAccount from "../screen/CreateAccount";
 import CreateEmail from "../screen/CreateEmail";
 import VerifyEmail from "../screen/VerifyEmail";
 import Trilhas from "../screen/Trilhas";
@@ -33,15 +32,13 @@ function RootStack() {
             ) : (
                 // Telas para usuários não logados (fluxo de autenticação)
                 <>
+                    <Stack.Screen name="Login" component={Login} />  
                     <Stack.Screen name="SignIn" component={SignIn} /> 
-                    <Stack.Screen name="CreateAccount" component={CreateAccount} />  
                     <Stack.Screen name="CreateEmail" component={CreateEmail} />  
                     <Stack.Screen name="VerifyEmail" component={VerifyEmail} /> 
                     <Stack.Screen name="CreatePassword" component={CreatePassword} />  
                     <Stack.Screen name="AccountCreated" component={AccountCreated} />  
-                    <Stack.Screen name="Login" component={Login} />  
                     <Stack.Screen name="LoginEmail" component={LoginEmail} /> 
-                     
                 </>
             )}
         </Stack.Navigator>

@@ -13,4 +13,5 @@ export const colors = {
   strengthMedium: '#F59E0B',
   strengthStrong: '#264A31',
   petals: '#C8BAB1',
+  buttonOrange: '#EA6D12',
 };

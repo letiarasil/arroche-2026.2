@@ -16,6 +16,7 @@ import Svg, { Path } from 'react-native-svg';
 import { colors } from '../constants/colors';
 import { getEventDetails } from '../constants/mockEvents';
 import Menu from '../components/Menu';
+import UserAvatar from '../components/UserAvatar';
 
 // Ícone SVG de Cartão de Crédito
 function CardIcon({ size = 22, color = '#3B82F6' }) {
@@ -26,36 +27,6 @@ function CardIcon({ size = 22, color = '#3B82F6' }) {
         fill={color}
       />
     </Svg>
-  );
-}
-
-// Avatar utilitário com fallback
-function UserAvatar({ source, name = 'U', size = 26 }) {
-  const [hasError, setHasError] = useState(false);
-
-  if (!source || hasError) {
-    const initial = name ? name.charAt(0).toUpperCase() : '?';
-    return (
-      <View
-        style={[
-          styles.avatarFallback,
-          { width: size, height: size, borderRadius: size / 2 },
-        ]}
-      >
-        <Text style={[styles.avatarInitial, { fontSize: size * 0.45 }]}>
-          {initial}
-        </Text>
-      </View>
-    );
-  }
-
-  const imageSource = typeof source === 'string' ? { uri: source } : source;
-  return (
-    <Image
-      source={imageSource}
-      style={{ width: size, height: size, borderRadius: size / 2 }}
-      onError={() => setHasError(true)}
-    />
   );
 }
 
@@ -505,17 +476,6 @@ const styles = StyleSheet.create({
   finalizeButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: 'bold',
-  },
-
-  /* Avatar Fallback */
-  avatarFallback: {
-    backgroundColor: '#E5E7EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarInitial: {
-    color: '#374151',
     fontWeight: 'bold',
   },
 });

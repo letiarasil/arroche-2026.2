@@ -20,40 +20,7 @@ import { Feather, FontAwesome } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { getEventDetails } from '../constants/mockEvents';
 import Menu from '../components/Menu';
-
-/**
- * Componente utilitário de Avatar com fallback automático caso a URL falhe
- * ou esteja sem conexão com a internet.
- */
-function UserAvatar({ source, name = 'U', size = 36, style }) {
-  const [hasError, setHasError] = useState(false);
-
-  if (!source || hasError) {
-    const initial = name ? name.charAt(0).toUpperCase() : '?';
-    return (
-      <View
-        style={[
-          styles.avatarFallback,
-          { width: size, height: size, borderRadius: size / 2 },
-          style,
-        ]}
-      >
-        <Text style={[styles.avatarInitial, { fontSize: size * 0.42 }]}>
-          {initial}
-        </Text>
-      </View>
-    );
-  }
-
-  const imageSource = typeof source === 'string' ? { uri: source } : source;
-  return (
-    <Image
-      source={imageSource}
-      style={[{ width: size, height: size, borderRadius: size / 2 }, style]}
-      onError={() => setHasError(true)}
-    />
-  );
-}
+import UserAvatar from '../components/UserAvatar';
 
 export default function DetalhesEvento({ navigation, route }) {
   // Parâmetros passados via rota (ex: ao clicar em 'Ver mais' no TrailCard ou voltar do Pagamento)
@@ -1043,17 +1010,6 @@ const styles = StyleSheet.create({
     color: '#C85A17',
     fontSize: 15,
     fontWeight: '600',
-  },
-
-  /* Utilitários de Avatar */
-  avatarFallback: {
-    backgroundColor: '#E5E7EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarInitial: {
-    color: '#374151',
-    fontWeight: 'bold',
   },
 
   /* Overlay dos Modais */

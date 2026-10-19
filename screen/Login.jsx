@@ -26,12 +26,34 @@ function Login({ navigation }) {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Regras de validação da senha (idênticas à criação de senha)
+  const hasMinLength = password.length >= 6;
+  const hasNumber = /\d/.test(password);
+  const hasSymbol = /[^A-Za-z0-9]/.test(password);
+  const isPasswordValid = hasMinLength && hasNumber && hasSymbol;
+
+  // Validação: email preenchido e senha válida conforme as regras da criação de conta
+  const isEmailFilled = email.trim().length > 0;
+  const isButtonDisabled = !isEmailFilled || !isPasswordValid || isLoading;
+
   const handleLogin = () => {
     const trimmedEmail = email.trim().toLowerCase();
-    const trimmedPassword = password.trim();
+    const trimmedPassword = password;
 
-    if (!trimmedEmail || !trimmedPassword) {
+    if (!trimmedEmail && !trimmedPassword) {
       setErrorMessage('Por favor, preencha o e-mail e a senha.');
+      return;
+    }
+    if (!trimmedEmail) {
+      setErrorMessage('Por favor, preencha o e-mail.');
+      return;
+    }
+    if (!trimmedPassword) {
+      setErrorMessage('Por favor, preencha a senha.');
+      return;
+    }
+    if (!isPasswordValid) {
+      setErrorMessage('A senha deve conter no mínimo 6 caracteres, 1 número e 1 símbolo.');
       return;
     }
 
@@ -152,9 +174,12 @@ function Login({ navigation }) {
 
             {/* Botão Entrar Laranja */}
             <TouchableOpacity
-              style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+              style={[
+                styles.loginButton,
+                isButtonDisabled && styles.loginButtonDisabled,
+              ]}
               onPress={handleLogin}
-              disabled={isLoading}
+              disabled={isButtonDisabled}
               activeOpacity={0.85}
             >
               {isLoading ? (
@@ -290,7 +315,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   loginButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.45,
   },
   loginButtonText: {
     color: '#FFFFFF',

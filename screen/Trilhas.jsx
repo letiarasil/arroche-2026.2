@@ -65,7 +65,7 @@ export default function Trilhas({ navigation }) {
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <HeaderWithBell onBellPress={() => {}} />
+        <HeaderWithBell onBellPress={() => navigation?.navigate('Notificacoes')} />
 
         {/* Search Bar */}
         <SearchBar

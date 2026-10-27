@@ -7,6 +7,8 @@ import VerifyEmail from "../screen/VerifyEmail";
 import Trilhas from "../screen/Trilhas";
 import DetalhesEvento from "../screen/DetalhesEvento";
 import PagamentoTrilha from "../screen/PagamentoTrilha";
+import DicasTrilha from "../screen/DicasTrilha";
+import Notificacoes from "../screen/Notificacoes";
 import Guias from "../screen/Guias";
 import Salvos from "../screen/Salvos";
 import Perfil from "../screen/Perfil";
@@ -29,6 +31,9 @@ function RootStack() {
                     <Stack.Screen name="Trilhas" component={Trilhas} />
                     <Stack.Screen name="DetalhesEvento" component={DetalhesEvento} />
                     <Stack.Screen name="PagamentoTrilha" component={PagamentoTrilha} />
+                    <Stack.Screen name="DicasTrilha" component={DicasTrilha} />
+                    <Stack.Screen name="Dicas" component={DicasTrilha} />
+                    <Stack.Screen name="Notificacoes" component={Notificacoes} />
                     <Stack.Screen name="Guias" component={Guias} />
                     <Stack.Screen name="Salvos" component={Salvos} />
                     <Stack.Screen name="Perfil" component={Perfil} />

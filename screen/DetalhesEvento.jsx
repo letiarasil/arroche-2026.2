@@ -213,16 +213,10 @@ export default function DetalhesEvento({ navigation, route }) {
   // Exibe dicas da trilha e fecha o modal de confirmação
   const handleShowTips = () => {
     setShowConfirmationModal(false);
-    Alert.alert(
-      'Dicas e Informações Importantes',
-      `Recomendações para a ${event.title}:\n\n` +
-        '1. Hidratação: Leve pelo menos 1,5L de água.\n' +
-        '2. Calçado: Use tênis ou bota com sola aderente.\n' +
-        '3. Proteção: Aplique protetor solar e repelente.\n' +
-        '4. Horário: Chegue 15 minutos antes ao ponto de encontro.\n' +
-        '5. Preservação: Não deixe lixo na trilha.',
-      [{ text: 'Entendido', style: 'default' }]
-    );
+    navigation?.navigate('DicasTrilha', {
+      eventId: event.id,
+      title: event.title,
+    });
   };
 
   // Valor total formatado

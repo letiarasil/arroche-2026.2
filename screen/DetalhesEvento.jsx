@@ -286,7 +286,15 @@ export default function DetalhesEvento({ navigation, route }) {
             </View>
 
             {/* Informações do Guia */}
-            <View style={styles.guideRow}>
+            <TouchableOpacity
+              style={styles.guideRow}
+              activeOpacity={0.7}
+              onPress={() =>
+                navigation?.navigate('PerfilGuia', {
+                  guideId: event.guide?.id,
+                })
+              }
+            >
               <UserAvatar
                 source={event.guide?.avatar}
                 name={event.guide?.name}
@@ -296,7 +304,7 @@ export default function DetalhesEvento({ navigation, route }) {
               <Text style={styles.guideText}>
                 {event.guide?.name} - {event.guide?.role}
               </Text>
-            </View>
+            </TouchableOpacity>
 
             {/* Seção Descrição */}
             <Text style={styles.sectionHeaderGreen}>Descrição</Text>

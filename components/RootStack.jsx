@@ -10,6 +10,7 @@ import PagamentoTrilha from "../screen/PagamentoTrilha";
 import Guias from "../screen/Guias";
 import Salvos from "../screen/Salvos";
 import Perfil from "../screen/Perfil";
+import PerfilGuia from "../screen/PerfilGuia";
 
 import CreatePassword from "../screen/CreatePassword";
 import AccountCreated from "../screen/AccountCreated";
@@ -30,6 +31,7 @@ function RootStack() {
                     <Stack.Screen name="DetalhesEvento" component={DetalhesEvento} />
                     <Stack.Screen name="PagamentoTrilha" component={PagamentoTrilha} />
                     <Stack.Screen name="Guias" component={Guias} />
+                    <Stack.Screen name="PerfilGuia" component={PerfilGuia} />
                     <Stack.Screen name="Salvos" component={Salvos} />
                     <Stack.Screen name="Perfil" component={Perfil} />
                 </>
@@ -49,4 +51,4 @@ function RootStack() {
     )
 }
 
-export default RootStack
+export default RootStack;

@@ -78,8 +78,14 @@ export default function Trilhas({ navigation }) {
         {/* Sub Header Tabs */}
         <TabSelector
           tabs={TABS}
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
+          activeTab="disponiveis"
+          onSelectTab={(tabId) => {
+            if (tabId === 'minhas') {
+              navigation?.navigate('MinhasTrilhas');
+            } else {
+              setActiveTab(tabId);
+            }
+          }}
         />
 
         {/* Fácil Section */}

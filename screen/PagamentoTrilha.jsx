@@ -17,6 +17,7 @@ import { colors } from '../constants/colors';
 import { getEventDetails } from '../constants/mockEvents';
 import Menu from '../components/Menu';
 import UserAvatar from '../components/UserAvatar';
+import { useSubscriptions } from '../contexts/SubscriptionsContext';
 
 // Ícone SVG de Cartão de Crédito
 function CardIcon({ size = 22, color = '#3B82F6' }) {
@@ -34,6 +35,8 @@ export default function PagamentoTrilha({ navigation, route }) {
   const routeParams = route?.params || {};
   const event = routeParams.event || getEventDetails(routeParams.eventId, routeParams.item);
   const ticketCount = routeParams.ticketCount || 1;
+
+  const { subscribeToTrail } = useSubscriptions();
 
   // Seleção da forma de pagamento: 'pix' ou 'card'
   const [paymentMethod, setPaymentMethod] = useState('pix');
@@ -56,32 +59,19 @@ export default function PagamentoTrilha({ navigation, route }) {
     // BACKEND INTEGRATION:
     // Chamada à API de pagamento:
     // POST /api/v1/payments/checkout
-    // Payload:
-    // {
-    //   eventId: event.id,
-    //   spots: ticketCount,
-    //   paymentMethod: paymentMethod, // 'pix' | 'card'
-    //   subTotal: subTotal,
-    //   serviceFee: serviceFee,
-    //   totalAmount: rawTotal
-    // }
     setTimeout(() => {
       setIsProcessing(false);
 
-      // Limpa a tela de pagamento do histórico da pilha (stack) para que
-      // ao voltar ou fechar a tela de detalhes, o usuário volte direto para a tela Trilhas.
+      // Inscreve a trilha na lista de Minhas Trilhas
+      subscribeToTrail(event, { ticketCount });
+
+      // Envia o usuário diretamente para a tela de Minhas Trilhas
       navigation?.reset({
         index: 1,
         routes: [
           { name: 'Trilhas' },
           {
-            name: 'DetalhesEvento',
-            params: {
-              eventId: event.id,
-              item: event,
-              justSubscribed: true,
-              ticketCount: ticketCount,
-            },
+            name: 'MinhasTrilhas',
           },
         ],
       });

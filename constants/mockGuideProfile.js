@@ -309,10 +309,49 @@ export const MOCK_GUIDES_LIST = [
     comments: [
       {
         id: 'c1',
-        name: 'Carlos Silva',
+        name: 'Camila Rocha',
         avatar:
-          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
         text: 'O Pedro domina todas as técnicas de segurança em rocha. Recomendo muito!',
+      },
+    ],
+  },
+  {
+    id: 'g-07',
+    name: 'Luiz Martins',
+    displayName: 'Luiz Martins',
+    role: 'Guia Histórico e Cultural',
+    specialties: 'Trilhas históricas • Patrimônio • Monólitos',
+    bioPrefix: 'Historiador e condutor local em Quixadá, ',
+    bioHighlight: 'com mais de 6 anos de experiência',
+    bioSuffix:
+      ' conduzindo grupos às formações mais emblemáticas do sertão central e narrando a rica história da região.',
+    trailsCount: 45,
+    coverImage: require('../assets/trilhas/cabeca-bruxa.jpg'),
+    avatar:
+      'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&auto=format&fit=crop&q=80',
+    availableTrails: [
+      {
+        id: 'hist-galinha-choca',
+        title: 'Trilha da Galinha Choca',
+        author: 'Luiz Martins',
+        time: '2 hr 30 min',
+        distance: '3,5km',
+        difficulty: 'Médio',
+        image: require('../assets/trilhas/cabeca-bruxa.jpg'),
+      },
+    ],
+    sharedPhotos: [
+      { id: 'sp1', image: require('../assets/trilhas/cabeca-bruxa.jpg') },
+      { id: 'sp2', image: require('../assets/trilhas/lemos.jpg') },
+    ],
+    comments: [
+      {
+        id: 'c1',
+        name: 'Mariana Costa',
+        avatar:
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        text: 'Excelente guia para a Trilha da Galinha Choca! Muito atencioso e conhecedor da história local.',
       },
     ],
   },

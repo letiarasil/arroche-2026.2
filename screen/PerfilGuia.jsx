@@ -15,13 +15,16 @@ import {
 } from 'react-native';
 import { Feather, FontAwesome5 } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
-import { MOCK_GUIDE_PROFILE } from '../constants/mockGuideProfile';
+import { MOCK_GUIDE_PROFILE, getGuideById } from '../constants/mockGuideProfile';
 import Menu from '../components/Menu';
 import TrailCard from '../components/TrailCard';
 import UserAvatar from '../components/UserAvatar';
 
 export default function PerfilGuia({ navigation, route }) {
-  const guide = route?.params?.guide || MOCK_GUIDE_PROFILE;
+  const guide =
+    route?.params?.guide ||
+    getGuideById(route?.params?.guideId) ||
+    MOCK_GUIDE_PROFILE;
   const activeTab = route?.params?.activeTab || 'Guias';
 
   // Estados funcionais da tela

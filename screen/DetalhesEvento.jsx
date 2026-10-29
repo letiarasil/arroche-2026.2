@@ -21,20 +21,30 @@ import { colors } from '../constants/colors';
 import { getEventDetails } from '../constants/mockEvents';
 import Menu from '../components/Menu';
 import UserAvatar from '../components/UserAvatar';
+import { useSubscriptions } from '../contexts/SubscriptionsContext';
 
 export default function DetalhesEvento({ navigation, route }) {
   // Parâmetros passados via rota (ex: ao clicar em 'Ver mais' no TrailCard ou voltar do Pagamento)
   const routeParams = route?.params || {};
   const eventId = routeParams.eventId || routeParams.item?.id || 'f1';
   const initialItem = routeParams.item;
+  const isHistory = Boolean(
+    routeParams.isHistory ||
+    initialItem?.status === 'concluida' ||
+    eventId === 'hist-galinha-choca'
+  );
 
   // Carrega os dados mockados baseados no ID ou item de fallback (Backend-Ready)
   const [event, setEvent] = useState(() => getEventDetails(eventId, initialItem));
 
+  const { isSubscribed: checkIsSubscribed, cancelSubscription: removeSubscription } = useSubscriptions();
+
   // Estados funcionais da tela
   const [ticketCount, setTicketCount] = useState(1);
   const [remainingSpots, setRemainingSpots] = useState(event.remainingSpots || 10);
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(() =>
+    checkIsSubscribed(eventId) || checkIsSubscribed(event?.id)
+  );
 
   // Estados dos modais solicitados
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
@@ -83,20 +93,30 @@ export default function DetalhesEvento({ navigation, route }) {
     };
   }, []);
 
-  // Sincroniza estado caso volte da tela de pagamento com inscrição concluída
+  // Sincroniza estado de inscrição com o contexto e parâmetros de rota
   useEffect(() => {
+    const currentlySubscribed =
+      routeParams.justSubscribed ||
+      checkIsSubscribed(eventId) ||
+      checkIsSubscribed(event?.id);
+
+    setIsSubscribed(currentlySubscribed);
+
     if (routeParams.justSubscribed) {
-      setIsSubscribed(true);
       setShowConfirmationModal(true);
       const bookedCount = routeParams.ticketCount || ticketCount;
       setRemainingSpots((prev) => Math.max(0, prev - bookedCount));
     }
-  }, [routeParams.justSubscribed, routeParams.ticketCount]);
+  }, [eventId, event?.id, routeParams.justSubscribed, routeParams.ticketCount, checkIsSubscribed]);
 
-  // Garante que o botão voltar nativo do dispositivo retorne sempre para a tela Trilhas
+  // Garante que o botão voltar nativo retorne para a tela anterior
   useEffect(() => {
     const onBackPress = () => {
-      navigation?.navigate('Trilhas');
+      if (navigation?.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation?.navigate('Trilhas');
+      }
       return true;
     };
 
@@ -154,6 +174,8 @@ export default function DetalhesEvento({ navigation, route }) {
       setIsCancelling(false);
       setShowCancelModal(false);
       setIsSubscribed(false);
+      removeSubscription(event.id);
+      removeSubscription(eventId);
       setRemainingSpots((prev) => prev + ticketCount);
 
       Alert.alert(
@@ -207,7 +229,11 @@ export default function DetalhesEvento({ navigation, route }) {
   };
 
   const handleClose = () => {
-    navigation?.navigate('Trilhas');
+    if (navigation?.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation?.navigate('Trilhas');
+    }
   };
 
   // Exibe dicas da trilha e fecha o modal de confirmação
@@ -263,12 +289,14 @@ export default function DetalhesEvento({ navigation, route }) {
 
           {/* Cartão Branco Principal Sobreposto */}
           <View style={styles.cardContainer}>
-            {/* Título do Evento e Badge INSCRITO (quando inscrito) */}
+            {/* Título do Evento e Badge INSCRITO / CONCLUÍDA */}
             <View style={styles.titleRow}>
               <Text style={styles.eventTitle}>{event.title}</Text>
-              {isSubscribed && (
+              {isHistory ? (
+                <Text style={styles.historyBadge}>CONCLUÍDA</Text>
+              ) : isSubscribed ? (
                 <Text style={styles.subscribedBadge}>INSCRITO</Text>
-              )}
+              ) : null}
             </View>
 
             {/* Avaliação em estrelas */}
@@ -285,6 +313,7 @@ export default function DetalhesEvento({ navigation, route }) {
               activeOpacity={0.7}
               onPress={() =>
                 navigation?.navigate('PerfilGuia', {
+                  guide: event.guide,
                   guideId: event.guide?.id,
                 })
               }
@@ -333,26 +362,28 @@ export default function DetalhesEvento({ navigation, route }) {
               </View>
             </View>
 
-            {/* Badge de Vagas Restantes com Avatares Sobrepostos */}
-            <View style={styles.spotsBadge}>
-              <View style={styles.overlappingAvatars}>
-                {(event.participants || []).slice(0, 3).map((participant, index) => (
-                  <UserAvatar
-                    key={participant.id || index}
-                    source={participant.avatar}
-                    name={participant.name}
-                    size={22}
-                    style={[
-                      styles.participantAvatar,
-                      { marginLeft: index === 0 ? 0 : -8, zIndex: 3 - index },
-                    ]}
-                  />
-                ))}
+            {/* Badge de Vagas Restantes com Avatares Sobrepostos (oculto no histórico) */}
+            {!isHistory && (
+              <View style={styles.spotsBadge}>
+                <View style={styles.overlappingAvatars}>
+                  {(event.participants || []).slice(0, 3).map((participant, index) => (
+                    <UserAvatar
+                      key={participant.id || index}
+                      source={participant.avatar}
+                      name={participant.name}
+                      size={22}
+                      style={[
+                        styles.participantAvatar,
+                        { marginLeft: index === 0 ? 0 : -8, zIndex: 3 - index },
+                      ]}
+                    />
+                  ))}
+                </View>
+                <Text style={styles.spotsBadgeText}>
+                  RESTAM {remainingSpots} VAGAS
+                </Text>
               </View>
-              <Text style={styles.spotsBadgeText}>
-                RESTAM {remainingSpots} VAGAS
-              </Text>
-            </View>
+            )}
 
             {/* Galeria de Fotos */}
             <View style={styles.gallerySection}>
@@ -476,8 +507,18 @@ export default function DetalhesEvento({ navigation, route }) {
               </View>
             </View>
 
-            {/* Barra de Ação Inferior: Alterna entre Inscrição e Cancelar Inscrição */}
-            {isSubscribed ? (
+            {/* Barra de Ação Inferior: Histórico (Desabilitado) / Inscrito / Inscrição */}
+            {isHistory ? (
+              <View style={styles.registrationBar}>
+                <TouchableOpacity
+                  style={[styles.subscribeButton, styles.historyButtonDisabled]}
+                  disabled={true}
+                  activeOpacity={1}
+                >
+                  <Text style={styles.historyButtonText}>Inscrições Encerradas</Text>
+                </TouchableOpacity>
+              </View>
+            ) : isSubscribed ? (
               // TELA DEPOIS DE INSCRITO: Botão Cancelar Inscrição
               <TouchableOpacity
                 style={styles.cancelSubscriptionButton}
@@ -586,6 +627,19 @@ export default function DetalhesEvento({ navigation, route }) {
               activeOpacity={0.8}
             >
               <Text style={styles.viewTipsButtonText}>Ver dicas</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.viewTipsButton, { backgroundColor: '#F3F4F6', marginTop: 10 }]}
+              onPress={() => {
+                setShowConfirmationModal(false);
+                navigation?.navigate('MinhasTrilhas');
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.viewTipsButtonText, { color: '#1F2937' }]}>
+                Minhas Trilhas
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -720,6 +774,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 0.6,
     marginLeft: 8,
+  },
+  historyBadge: {
+    color: '#6B7280',
+    backgroundColor: '#F3F4F6',
+    fontWeight: 'bold',
+    fontSize: 12,
+    letterSpacing: 0.6,
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    overflow: 'hidden',
   },
   ratingRow: {
     flexDirection: 'row',
@@ -991,6 +1057,21 @@ const styles = StyleSheet.create({
   },
   subscribeButtonPrice: {
     color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  historyButtonDisabled: {
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 0,
+    width: '100%',
+    shadowOpacity: 0,
+    elevation: 0,
+    opacity: 1,
+  },
+  historyButtonText: {
+    color: '#9CA3AF',
     fontSize: 15,
     fontWeight: 'bold',
   },

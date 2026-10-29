@@ -5,6 +5,7 @@ import SignIn from "../screen/SignIn";
 import CreateEmail from "../screen/CreateEmail";
 import VerifyEmail from "../screen/VerifyEmail";
 import Trilhas from "../screen/Trilhas";
+import MinhasTrilhas from "../screen/MinhasTrilhas";
 import DetalhesEvento from "../screen/DetalhesEvento";
 import PagamentoTrilha from "../screen/PagamentoTrilha";
 import DicasTrilha from "../screen/DicasTrilha";
@@ -30,6 +31,7 @@ function RootStack() {
                 // Telas para usuários logados
                 <>
                     <Stack.Screen name="Trilhas" component={Trilhas} />
+                    <Stack.Screen name="MinhasTrilhas" component={MinhasTrilhas} />
                     <Stack.Screen name="DetalhesEvento" component={DetalhesEvento} />
                     <Stack.Screen name="PagamentoTrilha" component={PagamentoTrilha} />
                     <Stack.Screen name="DicasTrilha" component={DicasTrilha} />

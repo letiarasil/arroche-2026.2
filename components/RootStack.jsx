@@ -5,11 +5,15 @@ import SignIn from "../screen/SignIn";
 import CreateEmail from "../screen/CreateEmail";
 import VerifyEmail from "../screen/VerifyEmail";
 import Trilhas from "../screen/Trilhas";
+import MinhasTrilhas from "../screen/MinhasTrilhas";
 import DetalhesEvento from "../screen/DetalhesEvento";
 import PagamentoTrilha from "../screen/PagamentoTrilha";
+import DicasTrilha from "../screen/DicasTrilha";
+import Notificacoes from "../screen/Notificacoes";
 import Guias from "../screen/Guias";
 import Salvos from "../screen/Salvos";
 import Perfil from "../screen/Perfil";
+import PerfilGuia from "../screen/PerfilGuia";
 
 import CreatePassword from "../screen/CreatePassword";
 import AccountCreated from "../screen/AccountCreated";
@@ -27,9 +31,14 @@ function RootStack() {
                 // Telas para usuários logados
                 <>
                     <Stack.Screen name="Trilhas" component={Trilhas} />
+                    <Stack.Screen name="MinhasTrilhas" component={MinhasTrilhas} />
                     <Stack.Screen name="DetalhesEvento" component={DetalhesEvento} />
                     <Stack.Screen name="PagamentoTrilha" component={PagamentoTrilha} />
+                    <Stack.Screen name="DicasTrilha" component={DicasTrilha} />
+                    <Stack.Screen name="Dicas" component={DicasTrilha} />
+                    <Stack.Screen name="Notificacoes" component={Notificacoes} />
                     <Stack.Screen name="Guias" component={Guias} />
+                    <Stack.Screen name="PerfilGuia" component={PerfilGuia} />
                     <Stack.Screen name="Salvos" component={Salvos} />
                     <Stack.Screen name="Perfil" component={Perfil} />
                 </>
@@ -49,4 +58,4 @@ function RootStack() {
     )
 }
 
-export default RootStack
+export default RootStack;

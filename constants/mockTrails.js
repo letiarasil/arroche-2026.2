@@ -3,7 +3,7 @@ export const MOCK_TRAILS = {
     {
       id: 'f1',
       title: 'Trilha do Lemos',
-      author: 'Riassa Mara',
+      author: 'Raissa Mara',
       time: '1 hr',
       distance: '2km',
       rating: '4.4',
@@ -14,7 +14,7 @@ export const MOCK_TRAILS = {
     {
       id: 'f2',
       title: 'Pedra do Cruzeiro',
-      author: 'Carlos Silva',
+      author: 'Ana Meireles',
       time: '10 min',
       distance: '300m',
       rating: '4.5',
@@ -38,7 +38,7 @@ export const MOCK_TRAILS = {
     {
       id: 'm2',
       title: 'Trilha da Cabeça da Bruxa',
-      author: 'Carlos Silva',
+      author: 'Miguel Almeida',
       time: '22 min',
       distance: '0,8km',
       rating: '4.2',
@@ -51,7 +51,7 @@ export const MOCK_TRAILS = {
     {
       id: 'd1',
       title: 'Trilha da Cabeça da Bruxa',
-      author: 'Carlos Silva',
+      author: 'Pedro Paulo',
       time: '22 min',
       distance: '0,8km',
       rating: '3.5',
@@ -62,7 +62,7 @@ export const MOCK_TRAILS = {
     {
       id: 'd2',
       title: 'Vale Perdido',
-      author: 'João Lucas',
+      author: 'Luiza Teixeira',
       time: '2 hr',
       distance: '4km',
       rating: '4.1',

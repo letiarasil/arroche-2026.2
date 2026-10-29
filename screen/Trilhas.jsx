@@ -65,7 +65,7 @@ export default function Trilhas({ navigation }) {
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <HeaderWithBell onBellPress={() => {}} />
+        <HeaderWithBell onBellPress={() => navigation?.navigate('Notificacoes')} />
 
         {/* Search Bar */}
         <SearchBar
@@ -78,8 +78,14 @@ export default function Trilhas({ navigation }) {
         {/* Sub Header Tabs */}
         <TabSelector
           tabs={TABS}
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
+          activeTab="disponiveis"
+          onSelectTab={(tabId) => {
+            if (tabId === 'minhas') {
+              navigation?.navigate('MinhasTrilhas');
+            } else {
+              setActiveTab(tabId);
+            }
+          }}
         />
 
         {/* Fácil Section */}

@@ -11,6 +11,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   Keyboard,
+  BackHandler,
 } from 'react-native';
 import { Feather, FontAwesome5 } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
@@ -30,6 +31,11 @@ export default function PerfilGuia({ navigation, route }) {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const mainScrollRef = useRef(null);
+
+  // Sincroniza a lista de comentários caso o guia mude
+  useEffect(() => {
+    setComments(guide.comments || []);
+  }, [guide.id]);
 
   // Monitora abertura e fechamento do teclado para evitar sobreposição
   useEffect(() => {
@@ -57,6 +63,30 @@ export default function PerfilGuia({ navigation, route }) {
     };
   }, []);
 
+  // Fechar tela (retorna para a listagem de guias ou tela anterior)
+  const handleClose = () => {
+    if (navigation?.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Guias');
+    }
+  };
+
+  // Garante que o botão voltar nativo do Android retorne para a tela de Guias
+  useEffect(() => {
+    const onBackPress = () => {
+      handleClose();
+      return true;
+    };
+
+    const backHandlerSubscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      onBackPress
+    );
+
+    return () => backHandlerSubscription.remove();
+  }, [navigation]);
+
   // Alterna salvar trilha
   const toggleSave = (id) => {
     setSavedTrails((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -80,15 +110,6 @@ export default function PerfilGuia({ navigation, route }) {
     setComments((prev) => [...prev, newEntry]);
     setNewComment('');
     Keyboard.dismiss();
-  };
-
-  // Fechar tela (volta para a anterior ou Trilhas)
-  const handleClose = () => {
-    if (navigation?.canGoBack()) {
-      navigation.goBack();
-    } else {
-      navigation.navigate('Trilhas');
-    }
   };
 
   return (
@@ -120,7 +141,7 @@ export default function PerfilGuia({ navigation, route }) {
               resizeMode="cover"
             />
 
-            {/* Botão circular de fechar (X) no topo direito */}
+            {/* Botão circular de fechar (X) no topo direito para voltar */}
             <TouchableOpacity
               style={styles.closeButton}
               onPress={handleClose}
@@ -136,7 +157,7 @@ export default function PerfilGuia({ navigation, route }) {
             <View style={styles.avatarWrapper}>
               <UserAvatar
                 source={guide.avatar}
-                name={guide.name}
+                name={guide.displayName || guide.name}
                 size={96}
                 style={styles.avatarImage}
               />
@@ -173,49 +194,53 @@ export default function PerfilGuia({ navigation, route }) {
             <View style={styles.divider} />
 
             {/* Seção: Trilhas Disponíveis */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Trilhas Disponíveis</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalScrollContent}
-              >
-                {guide.availableTrails.map((trail) => (
-                  <TrailCard
-                    key={trail.id}
-                    item={trail}
-                    isSaved={!!savedTrails[trail.id]}
-                    onToggleSave={toggleSave}
-                    onPressVerMais={(trailItem) =>
-                      navigation?.navigate('DetalhesEvento', {
-                        eventId: trailItem.id,
-                        item: trailItem,
-                      })
-                    }
-                  />
-                ))}
-              </ScrollView>
-            </View>
+            {guide.availableTrails && guide.availableTrails.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Trilhas Disponíveis</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.horizontalScrollContent}
+                >
+                  {guide.availableTrails.map((trail) => (
+                    <TrailCard
+                      key={trail.id}
+                      item={trail}
+                      isSaved={!!savedTrails[trail.id]}
+                      onToggleSave={toggleSave}
+                      onPressVerMais={(trailItem) =>
+                        navigation?.navigate('DetalhesEvento', {
+                          eventId: trailItem.id,
+                          item: trailItem,
+                        })
+                      }
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
             {/* Seção: Fotos Compartilhadas */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Fotos Compartilhadas</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalScrollContent}
-              >
-                {guide.sharedPhotos.map((photo) => (
-                  <View key={photo.id} style={styles.photoCard}>
-                    <Image
-                      source={photo.image}
-                      style={styles.sharedPhoto}
-                      resizeMode="cover"
-                    />
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
+            {guide.sharedPhotos && guide.sharedPhotos.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Fotos Compartilhadas</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.horizontalScrollContent}
+                >
+                  {guide.sharedPhotos.map((photo) => (
+                    <View key={photo.id} style={styles.photoCard}>
+                      <Image
+                        source={photo.image}
+                        style={styles.sharedPhoto}
+                        resizeMode="cover"
+                      />
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
             {/* Seção: Comentários */}
             <View style={styles.section}>

@@ -23,12 +23,14 @@ export default function TrailCard({ item, isSaved, onToggleSave, onPressVerMais 
 
       <View style={styles.cardMeta}>
         <Text style={styles.difficultyText}>{item.difficulty}</Text>
-        <View style={styles.ratingBox}>
-          <FontAwesome name="star" size={12} color="#111827" />
-          <Text style={styles.ratingText}>
-            {item.rating} ({item.reviews})
-          </Text>
-        </View>
+        {item.rating && (
+          <View style={styles.ratingBox}>
+            <FontAwesome name="star" size={12} color="#111827" />
+            <Text style={styles.ratingText}>
+              {item.rating} {item.reviews ? `(${item.reviews})` : ''}
+            </Text>
+          </View>
+        )}
       </View>
 
       <Text style={styles.cardTitle} numberOfLines={1}>

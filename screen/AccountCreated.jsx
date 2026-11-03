@@ -7,11 +7,9 @@ import { colors } from '../constants/colors';
 import { useAuth } from '../contexts/AuthContext';
 
 function AccountCreated({ navigation }) {
-  const { login } = useAuth();
-
   const handleGoToApp = () => {
-    // Loga diretamente → RootStack redireciona para Trilhas
-    login();
+    // Como isLoggedIn já é true no AuthContext, 
+    // a tela Trilhas já é renderizada automaticamente pelo RootStack!
   };
 
   return (

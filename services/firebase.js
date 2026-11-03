@@ -1,13 +1,8 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { 
-  getAuth, 
-  initializeAuth, 
-  getReactNativePersistence 
-} from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Cole as credenciais reais do Firebase aqui
+// Credenciais do Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyCVnU3gpmunZJBRoYUENJbtMhx0K4CGx5U",
   authDomain: "arroche.firebaseapp.com",
@@ -20,15 +15,8 @@ const firebaseConfig = {
 // 1. Inicializa o aplicativo Firebase de forma segura
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// 2. Inicializa o Auth tratando exceções de reinicialização do Fast Refresh
-let auth;
-try {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
-  });
-} catch (error) {
-  auth = getAuth(app);
-}
+// 2. Inicializa o Auth
+const auth = getAuth(app);
 
 // 3. Inicializa a instância do Firestore
 const db = getFirestore(app);

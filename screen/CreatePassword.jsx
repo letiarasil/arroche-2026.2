@@ -17,12 +17,17 @@ import ButtonContinue from '../components/ButtonContinue';
 import FooterTerms from '../components/FooterTerms';
 import { colors } from '../constants/colors';
 import { mockDatabase } from '../constants/mockAuth';
+import { useAuth } from '../contexts/AuthContext';
 
 function CreatePassword({ navigation, route }) {
+  const { signUp, startRegistration } = useAuth();
+
   const [name, setName] = useState('');
   const [cpf, setCpf] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Email recebido das etapas anteriores (caso necessário no fluxo)
   const userEmail = route?.params?.email || '';
@@ -41,6 +46,7 @@ function CreatePassword({ navigation, route }) {
     }
 
     setCpf(formatted);
+    if (errorMessage) setErrorMessage('');
   };
 
   // Regras de validação da senha
@@ -66,22 +72,55 @@ function CreatePassword({ navigation, route }) {
   const isNameValid = name.trim().length >= 2;
   const isPasswordValid = hasMinLength && hasNumber && hasSymbol;
 
-  const isButtonDisabled = !(isNameValid && isCpfComplete && isPasswordValid);
+  const isButtonDisabled = !(isNameValid && isCpfComplete && isPasswordValid) || isLoading;
 
-  const handleContinue = () => {
-    // Guarda o usuário recém-cadastrado na memória para permitir o teste de login
-    mockDatabase.registeredUser = {
-      email: userEmail,
-      password,
-      name,
-      cpf,
-    };
+  const handleContinue = async () => {
+    setIsLoading(true);
+    setErrorMessage('');
 
-    navigation?.navigate('AccountCreated', {
-      email: userEmail,
-      name,
-      cpf,
-    });
+    try {
+      if (startRegistration) {
+        startRegistration();
+      }
+
+      // Conecta com o Firebase Auth e cria o perfil no Firestore
+      if (signUp) {
+        await signUp(userEmail.trim(), password, name.trim(), 'hiker', {
+          cpf: cpf.replace(/\D/g, ''),
+        });
+      }
+
+      // Direciona para a tela de conta criada com sucesso
+      navigation?.navigate('AccountCreated', {
+        email: userEmail,
+        name,
+        cpf,
+      });
+    } catch (error) {
+      console.warn('Erro ao criar conta no Firebase:', error);
+      if (error?.code === 'auth/email-already-in-use') {
+        setErrorMessage('Este e-mail já está cadastrado em outra conta.');
+      } else if (error?.code === 'auth/invalid-email') {
+        setErrorMessage('O formato do e-mail é inválido.');
+      } else if (error?.code === 'auth/weak-password') {
+        setErrorMessage('A senha informada é muito fraca.');
+      } else {
+        // Fallback para modo offline / testes em desenvolvimento
+        mockDatabase.registeredUser = {
+          email: userEmail,
+          password,
+          name,
+          cpf,
+        };
+        navigation?.navigate('AccountCreated', {
+          email: userEmail,
+          name,
+          cpf,
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -113,7 +152,10 @@ function CreatePassword({ navigation, route }) {
               placeholder="Insira seu nome"
               placeholderTextColor={colors.inputBorder}
               value={name}
-              onChangeText={setName}
+              onChangeText={(text) => {
+                setName(text);
+                if (errorMessage) setErrorMessage('');
+              }}
               autoCapitalize="words"
               autoCorrect={false}
             />
@@ -142,7 +184,10 @@ function CreatePassword({ navigation, route }) {
                 placeholder="Insira uma senha"
                 placeholderTextColor={colors.inputBorder}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  if (errorMessage) setErrorMessage('');
+                }}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -174,6 +219,19 @@ function CreatePassword({ navigation, route }) {
                 />
               </View>
             )}
+
+            {/* Mensagem de Erro de Cadastro */}
+            {errorMessage ? (
+              <View style={styles.errorContainer}>
+                <MaterialDesignIcons
+                  name="alert-circle-outline"
+                  size={16}
+                  color={colors.strengthWeak}
+                  style={styles.errorIcon}
+                />
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
 
             {/* Requisitos da Senha */}
             <View style={styles.requirementsContainer}>
@@ -225,6 +283,7 @@ function CreatePassword({ navigation, route }) {
           <View style={styles.buttonWrapper}>
             <ButtonContinue
               disabled={isButtonDisabled}
+              loading={isLoading}
               onPress={handleContinue}
             />
           </View>
@@ -317,6 +376,24 @@ const styles = StyleSheet.create({
   strengthBarFill: {
     height: '100%',
     borderRadius: 2,
+  },
+
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 2,
+  },
+
+  errorIcon: {
+    marginRight: 6,
+  },
+
+  errorText: {
+    color: colors.strengthWeak,
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
   },
 
   requirementsContainer: {

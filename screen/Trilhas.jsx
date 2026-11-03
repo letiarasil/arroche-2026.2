@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { colors } from '../constants/colors';
 import { MOCK_TRAILS } from '../constants/mockTrails';
+import { getActiveTrails } from '../services/trailService';
 import HeaderWithBell from '../components/HeaderWithBell';
 import SearchBar from '../components/SearchBar';
 import TabSelector from '../components/TabSelector';
@@ -26,6 +27,47 @@ export default function Trilhas({ navigation }) {
   const [activeTab, setActiveTab] = useState('disponiveis');
   const [savedTrails, setSavedTrails] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [trailsData, setTrailsData] = useState(MOCK_TRAILS);
+
+  // Conexão com o banco de dados Firestore para buscar trilhas ativas
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchTrails() {
+      try {
+        const firestoreTrails = await getActiveTrails();
+        if (firestoreTrails && firestoreTrails.length > 0 && isMounted) {
+          const facil = firestoreTrails.filter(
+            (t) =>
+              t.difficulty?.toLowerCase().includes('fácil') ||
+              t.difficulty?.toLowerCase().includes('facil')
+          );
+          const medio = firestoreTrails.filter(
+            (t) =>
+              t.difficulty?.toLowerCase().includes('médio') ||
+              t.difficulty?.toLowerCase().includes('medio')
+          );
+          const dificil = firestoreTrails.filter(
+            (t) =>
+              t.difficulty?.toLowerCase().includes('difícil') ||
+              t.difficulty?.toLowerCase().includes('dificil')
+          );
+
+          setTrailsData({
+            facil: facil.length > 0 ? facil : MOCK_TRAILS.facil,
+            medio: medio.length > 0 ? medio : MOCK_TRAILS.medio,
+            dificil: dificil.length > 0 ? dificil : MOCK_TRAILS.dificil,
+          });
+        }
+      } catch (err) {
+        console.warn('Conexão Firestore: usando dados locais de trilhas.', err?.message);
+      }
+    }
+
+    fetchTrails();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const toggleSave = (id) => {
     setSavedTrails((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -89,16 +131,16 @@ export default function Trilhas({ navigation }) {
         />
 
         {/* Fácil Section */}
-        {renderSection('Fácil', MOCK_TRAILS.facil)}
+        {renderSection('Fácil', trailsData.facil)}
 
         {/* Replant Banner */}
         <ReplantBanner onPress={() => {}} />
 
         {/* Médio Section */}
-        {renderSection('Médio', MOCK_TRAILS.medio)}
+        {renderSection('Médio', trailsData.medio)}
 
         {/* Difícil Section */}
-        {renderSection('Difícil', MOCK_TRAILS.dificil)}
+        {renderSection('Difícil', trailsData.dificil)}
 
         {/* Footer Logo Banner */}
         <FooterLogoBanner />

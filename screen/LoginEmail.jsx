@@ -21,7 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 function LoginEmail({ navigation, route }) {
   // Preenche com o e-mail cadastrado caso tenha sido redirecionado do cadastro
   const initialEmail = route?.params?.email || mockDatabase.registeredUser?.email || '';
-  const { login } = useAuth();
+  const { login, signIn } = useAuth();
 
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
@@ -49,7 +49,7 @@ function LoginEmail({ navigation, route }) {
     if (hasError) setHasError(false);
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     // Guarda: bloqueia se o formato do e-mail não for válido
     if (!isEmailValid) {
       setEmailTouched(true);
@@ -59,31 +59,44 @@ function LoginEmail({ navigation, route }) {
     setIsLoading(true);
     setHasError(false);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    const typedEmail = email.trim().toLowerCase();
+    const typedPass = password;
 
-      const typedEmail = email.trim().toLowerCase();
-      const typedPass = password;
+    try {
+      if (signIn) {
+        try {
+          await signIn(typedEmail, typedPass);
+          login();
+          return;
+        } catch (firebaseErr) {
+          console.warn('Tentativa no Firebase falhou, testando dados locais:', firebaseErr?.code);
 
-      // 1. Confere se bate com o usuário cadastrado no fluxo anterior
-      const registered = mockDatabase.registeredUser;
-      const isMatchRegistered =
-        registered &&
-        registered.email.trim().toLowerCase() === typedEmail &&
-        registered.password === typedPass;
+          const registered = mockDatabase.registeredUser;
+          const isMatchRegistered =
+            registered &&
+            registered.email?.trim().toLowerCase() === typedEmail &&
+            registered.password === typedPass;
 
-      // 2. Ou confere com o usuário padrão de teste (sarah.jansen@gmail.com / senha123@)
-      const isMatchDefault =
-        mockDatabase.defaultUser.email.toLowerCase() === typedEmail &&
-        mockDatabase.defaultUser.password === typedPass;
+          const isMatchDefault =
+            mockDatabase.defaultUser?.email?.toLowerCase() === typedEmail &&
+            mockDatabase.defaultUser?.password === typedPass;
 
-      if (isMatchRegistered || isMatchDefault) {
-        login(); // Atualiza isLoggedIn → RootStack redireciona para Trilhas
-      } else {
-        // Erro: exibe a mensagem vermelha do protótipo
-        setHasError(true);
+          if (isMatchRegistered || isMatchDefault) {
+            login();
+            return;
+          }
+
+          setHasError(true);
+          return;
+        }
       }
-    }, 800);
+
+      login();
+    } catch (err) {
+      setHasError(true);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

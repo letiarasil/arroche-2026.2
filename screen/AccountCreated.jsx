@@ -7,9 +7,22 @@ import { colors } from '../constants/colors';
 import { useAuth } from '../contexts/AuthContext';
 
 function AccountCreated({ navigation }) {
+  const { enterApp, login } = useAuth();
+
   const handleGoToApp = () => {
-    // Como isLoggedIn já é true no AuthContext, 
-    // a tela Trilhas já é renderizada automaticamente pelo RootStack!
+    // Ativa a sessão do usuário no AuthContext
+    if (enterApp) {
+      enterApp();
+    } else if (login) {
+      login();
+    }
+
+    // Redireciona para a página inicial (tela de Trilhas)
+    try {
+      navigation?.navigate('Trilhas');
+    } catch (e) {
+      // Caso a navegação seja tratada automaticamente pela troca de pilha do RootStack
+    }
   };
 
   return (
@@ -38,7 +51,7 @@ function AccountCreated({ navigation }) {
             Sua conta{'\n'}foi criada com sucesso!
           </Text>
 
-          {/* Botão para o Login */}
+          {/* Botão para o Login / Entrar no app */}
           <ButtonContinue
             title="Entrar no app"
             onPress={handleGoToApp}

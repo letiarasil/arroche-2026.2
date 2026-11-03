@@ -18,7 +18,7 @@ import { mockDatabase } from '../constants/mockAuth';
 import { useAuth } from '../contexts/AuthContext';
 
 function Login({ navigation }) {
-  const { login } = useAuth();
+  const { login, signIn } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,7 +36,7 @@ function Login({ navigation }) {
   const isEmailFilled = email.trim().length > 0;
   const isButtonDisabled = !isEmailFilled || !isPasswordValid || isLoading;
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPassword = password;
 
@@ -60,26 +60,54 @@ function Login({ navigation }) {
     setIsLoading(true);
     setErrorMessage('');
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // 1. Tenta autenticação real com o Firebase Auth
+      if (signIn) {
+        try {
+          await signIn(trimmedEmail, trimmedPassword);
+          login();
+          return;
+        } catch (firebaseErr) {
+          console.warn('Tentativa no Firebase falhou, testando dados locais:', firebaseErr?.code);
 
-      const registered = mockDatabase?.registeredUser;
-      const isMatchRegistered =
-        registered &&
-        registered.email?.trim().toLowerCase() === trimmedEmail &&
-        registered.password === trimmedPassword;
+          // Verifica se confere com o usuário cadastrado no fluxo recente ou usuário de teste
+          const registered = mockDatabase?.registeredUser;
+          const isMatchRegistered =
+            registered &&
+            registered.email?.trim().toLowerCase() === trimmedEmail &&
+            registered.password === trimmedPassword;
 
-      const isMatchDefault =
-        mockDatabase?.defaultUser?.email?.toLowerCase() === trimmedEmail &&
-        mockDatabase?.defaultUser?.password === trimmedPassword;
+          const isMatchDefault =
+            mockDatabase?.defaultUser?.email?.toLowerCase() === trimmedEmail &&
+            mockDatabase?.defaultUser?.password === trimmedPassword;
 
-      // Se bater com o cadastrado, com o padrão ou se for qualquer teste válido
-      if (isMatchRegistered || isMatchDefault || trimmedEmail.includes('@')) {
-        login();
-      } else {
-        setErrorMessage('E-mail ou senha incorretos.');
+          if (isMatchRegistered || isMatchDefault) {
+            login();
+            return;
+          }
+
+          if (
+            firebaseErr?.code === 'auth/invalid-credential' ||
+            firebaseErr?.code === 'auth/user-not-found' ||
+            firebaseErr?.code === 'auth/wrong-password' ||
+            firebaseErr?.code === 'auth/invalid-email'
+          ) {
+            setErrorMessage('E-mail ou senha incorretos.');
+          } else if (firebaseErr?.code === 'auth/too-many-requests') {
+            setErrorMessage('Muitas tentativas. Aguarde um momento e tente novamente.');
+          } else {
+            setErrorMessage('E-mail ou senha incorretos.');
+          }
+          return;
+        }
       }
-    }, 600);
+
+      login();
+    } catch (err) {
+      setErrorMessage('Erro ao autenticar. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

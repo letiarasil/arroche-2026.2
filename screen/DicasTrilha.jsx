@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   StatusBar,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
@@ -65,6 +66,29 @@ const TIPS = [
 export default function DicasTrilha({ navigation, route }) {
   const { title } = route?.params || {};
 
+  // Redireciona diretamente para a tela de Trilhas
+  const handleGoToTrilhas = () => {
+    navigation?.reset({
+      index: 0,
+      routes: [{ name: 'Trilhas' }],
+    });
+  };
+
+  // Intercepta o botão voltar nativo do Android para ir para 'Trilhas'
+  useEffect(() => {
+    const onBackPress = () => {
+      handleGoToTrilhas();
+      return true;
+    };
+
+    const backHandlerSubscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      onBackPress
+    );
+
+    return () => backHandlerSubscription.remove();
+  }, [navigation]);
+
   return (
     <View style={styles.screenContainer}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -73,7 +97,7 @@ export default function DicasTrilha({ navigation, route }) {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation?.goBack()}
+          onPress={handleGoToTrilhas}
           activeOpacity={0.7}
         >
           <Feather name="chevron-left" size={24} color="#111827" />

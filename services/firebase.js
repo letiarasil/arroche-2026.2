@@ -1,8 +1,12 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { 
+  initializeAuth, 
+  getReactNativePersistence, 
+  getAuth 
+} from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore } from 'firebase/firestore';
 
-// Credenciais do Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyCVnU3gpmunZJBRoYUENJbtMhx0K4CGx5U",
   authDomain: "arroche.firebaseapp.com",
@@ -12,13 +16,20 @@ const firebaseConfig = {
   appId: "1:383563205568:web:76b1dd7cac6800de50d625",
 };
 
-// 1. Inicializa o aplicativo Firebase de forma segura
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// Evita inicializar o app múltiplas vezes no React Native (Fast Refresh)
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// 2. Inicializa o Auth
-const auth = getAuth(app);
+// Configura a autenticação com suporte a persistência via AsyncStorage
+let auth;
+try {
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+} catch (error) {
+  // Caso o auth já tenha sido inicializado anteriormente pelo Fast Refresh
+  auth = getAuth(app);
+}
 
-// 3. Inicializa a instância do Firestore
 const db = getFirestore(app);
 
 export { app, auth, db };

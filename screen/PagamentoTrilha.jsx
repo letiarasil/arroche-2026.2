@@ -9,7 +9,7 @@ import {
   StatusBar,
   Platform,
   ActivityIndicator,
-  Alert,
+  Modal,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
@@ -42,6 +42,10 @@ export default function PagamentoTrilha({ navigation, route }) {
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Controle dos Modais
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+
   // Cálculos de valores (Subtotal, Taxa de serviço e Total)
   const basePricePerTicket = event.price || 10.0;
   const rawTotal = basePricePerTicket * ticketCount;
@@ -52,37 +56,51 @@ export default function PagamentoTrilha({ navigation, route }) {
   const formattedServiceFee = serviceFee.toFixed(2).replace('.', ',');
   const formattedTotal = rawTotal.toFixed(2).replace('.', ',');
 
-  // Finalização do pagamento com simulação e backend readiness
+  // 1. Processa o pagamento e exibe o 1º Modal (Confirmação com política de cancelamento)
   const handleFinalizePayment = () => {
     setIsProcessing(true);
 
-    // BACKEND INTEGRATION:
-    // Chamada à API de pagamento:
-    // POST /api/v1/payments/checkout
     setTimeout(() => {
       setIsProcessing(false);
-
-      // Inscreve a trilha na lista de Minhas Trilhas
+      
+      // Inscreve a trilha na lista do usuário no contexto local/Firestore
       subscribeToTrail(event, { ticketCount });
 
-      // Envia o usuário diretamente para a tela de Minhas Trilhas
-      navigation?.reset({
-        index: 1,
-        routes: [
-          { name: 'Trilhas' },
-          {
-            name: 'MinhasTrilhas',
-          },
-        ],
-      });
+      // Abre o 1º modal: Deu certo + aviso de cancelamento
+      setShowSuccessModal(true);
     }, 700);
+  };
+
+  // 2. Transiciona do 1º Modal para o 2º Modal (Parabéns + Dicas da Trilha)
+  const handleAdvanceToTipsModal = () => {
+    setShowSuccessModal(false);
+    setShowConfirmationModal(true);
+  };
+
+  // 3. Ações do Modal de Dicas
+  const handleGoToTipsScreen = () => {
+    setShowConfirmationModal(false);
+    navigation?.navigate('DicasTrilha', {
+      eventId: event.id,
+      title: event.title,
+    });
+  };
+
+  const handleCloseAllAndStay = () => {
+    setShowConfirmationModal(false);
+    // Retorna para os detalhes da trilha atualizada
+    navigation?.navigate('DetalhesEvento', {
+      eventId: event.id,
+      justSubscribed: true,
+      ticketCount,
+    });
   };
 
   return (
     <View style={styles.screenContainer}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Header Superior com Botão Voltar e Título INSCRIÇÃO */}
+      {/* Header Superior com Botão Voltar */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -111,7 +129,7 @@ export default function PagamentoTrilha({ navigation, route }) {
               size={26}
             />
             <Text style={styles.guideText}>
-              {event.guide?.name} - {event.guide?.role}
+              {event.guide?.name} • {event.guide?.role}
             </Text>
           </View>
 
@@ -218,7 +236,6 @@ export default function PagamentoTrilha({ navigation, route }) {
           </View>
         </View>
 
-        {/* Mensagem informativa sobre política de cancelamento */}
         <Text style={styles.refundPolicyText}>
           Você pode cancelar sua reserva até 2 dias antes da realização da trilha e receber o reembolso do valor pago.
         </Text>
@@ -242,6 +259,92 @@ export default function PagamentoTrilha({ navigation, route }) {
 
       {/* Menu Inferior Padrão */}
       <Menu activeTab="Trilhas" navigation={navigation} />
+
+      {/* ============================================================ */}
+      {/* 1º MODAL: CONFIRMAÇÃO DE PAGAMENTO & REEMBOLSO */}
+      {/* ============================================================ */}
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSuccessModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.checkIconCircle}>
+              <Feather name="check" size={28} color="#FFFFFF" />
+            </View>
+
+            <Text style={styles.modalTitle}>Inscrição Confirmada!</Text>
+            <Text style={styles.modalSubtitle}>
+              Seu pagamento foi processado com sucesso.
+            </Text>
+
+            <Text style={styles.modalBodyText}>
+              Você tem até <Text style={styles.highlightTextBold}>2 dias antes</Text> da trilha para cancelar a reserva e solicitar reembolso integral se necessário.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.primaryModalButton}
+              onPress={handleAdvanceToTipsModal}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.primaryModalButtonText}>Continuar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ============================================================ */}
+      {/* 2º MODAL: DICAS E PREPARAÇÃO DA TRILHA */}
+      {/* ============================================================ */}
+      <Modal
+        visible={showConfirmationModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseAllAndStay}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={handleCloseAllAndStay}
+              activeOpacity={0.8}
+            >
+              <Feather name="x" size={20} color="#111827" />
+            </TouchableOpacity>
+
+            <Text style={styles.modalTitle}>Parabéns, aventureiro!</Text>
+            <Text style={styles.modalSubtitle}>
+              Você acabou de se inscrever na {event.title}.
+            </Text>
+
+            <Text style={styles.modalBodyText}>
+              Preparamos uma lista de{' '}
+              <Text style={styles.highlightTextGreen}>
+                dicas e informações importantes
+              </Text>{' '}
+              para ajudar você a se preparar e aproveitar a trilha com mais segurança.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.primaryModalButton}
+              onPress={handleGoToTipsScreen}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.primaryModalButtonText}>Ver dicas</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.secondaryModalButton, { marginTop: 10 }]}
+              onPress={handleCloseAllAndStay}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.secondaryModalButtonText}>Concluir</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -285,7 +388,7 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
 
-  /* Seção de Informações da Trilha */
+  /* Seção de Informações */
   eventInfoSection: {
     marginBottom: 20,
   },
@@ -434,7 +537,6 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
 
-  /* Aviso de Cancelamento / Reembolso */
   refundPolicyText: {
     fontSize: 11,
     lineHeight: 16,
@@ -468,5 +570,109 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-});
 
+  /* Overlays e Cards de Modais */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#F5F7F5',
+    borderRadius: 24,
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  checkIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary || '#2e7d32',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#374151',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  modalBodyText: {
+    fontSize: 12,
+    color: '#4B5563',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 20,
+    paddingHorizontal: 6,
+  },
+  highlightTextBold: {
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  highlightTextGreen: {
+    color: colors.primary || '#2e7d32',
+    fontWeight: '700',
+  },
+  primaryModalButton: {
+    borderWidth: 1.5,
+    borderColor: colors.primary || '#2e7d32',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 34,
+    backgroundColor: '#F9FAF9',
+    width: '100%',
+    alignItems: 'center',
+  },
+  primaryModalButtonText: {
+    color: colors.primary || '#2e7d32',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  secondaryModalButton: {
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 34,
+    backgroundColor: '#F3F4F6',
+    width: '100%',
+    alignItems: 'center',
+  },
+  secondaryModalButtonText: {
+    color: '#1F2937',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: -18,
+    right: -10,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    elevation: 5,
+    zIndex: 10,
+  },
+});

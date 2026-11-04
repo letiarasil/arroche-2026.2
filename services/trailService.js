@@ -15,6 +15,7 @@ import { resolveTrailImage } from './trailImages';
 
 const TRAILS_REF = collection(db, 'trails');
 
+// Função auxiliar para padronizar os dados da trilha e resolver imagens
 function normalizeTrail(id, data) {
   if (!data) return null;
   return {
@@ -75,6 +76,26 @@ export const getTrailById = async (trailId) => {
     return normalizeTrail(snap.id, snap.data());
   }
   return null;
+};
+
+// --- NOVA FUNÇÃO UTILITÁRIA ---
+// Buscar trilhas em lote através de um array de IDs (útil para "Minhas Trilhas")
+export const getTrailsByIds = async (trailIds) => {
+  if (!trailIds || !Array.isArray(trailIds) || trailIds.length === 0) {
+    return [];
+  }
+
+  try {
+    // Busca todas as trilhas simultaneamente via Promise.all
+    const promises = trailIds.map((id) => getTrailById(id));
+    const results = await Promise.all(promises);
+
+    // Filtra eventuais resultados nulos (ex: trilhas excluídas do banco)
+    return results.filter(Boolean);
+  } catch (err) {
+    console.error('Erro ao buscar trilhas por lista de IDs:', err?.message);
+    return [];
+  }
 };
 
 // Adicionar avaliação na subcoleção de uma trilha

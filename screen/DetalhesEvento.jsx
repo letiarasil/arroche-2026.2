@@ -24,7 +24,7 @@ import UserAvatar from '../components/UserAvatar';
 import { useSubscriptions } from '../contexts/SubscriptionsContext';
 
 export default function DetalhesEvento({ navigation, route }) {
-  // Parâmetros passados via rota (ex: ao clicar em 'Ver mais' no TrailCard ou voltar do Pagamento)
+  // Parâmetros passados via rota
   const routeParams = route?.params || {};
   const eventId = routeParams.eventId || routeParams.item?.id || 'f1';
   const initialItem = routeParams.item;
@@ -34,7 +34,7 @@ export default function DetalhesEvento({ navigation, route }) {
     eventId === 'hist-galinha-choca'
   );
 
-  // Carrega os dados mockados baseados no ID ou item de fallback (Backend-Ready)
+  // Carrega os dados da trilha
   const [event, setEvent] = useState(() => getEventDetails(eventId, initialItem));
 
   const { isSubscribed: checkIsSubscribed, cancelSubscription: removeSubscription } = useSubscriptions();
@@ -46,7 +46,7 @@ export default function DetalhesEvento({ navigation, route }) {
     checkIsSubscribed(eventId) || checkIsSubscribed(event?.id)
   );
 
-  // Estados dos modais solicitados
+  // Estados dos modais
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -55,11 +55,11 @@ export default function DetalhesEvento({ navigation, route }) {
   const [comments, setComments] = useState(event.comments || []);
   const [newComment, setNewComment] = useState('');
 
-  // Refs e estados para o ajuste do teclado
+  // Refs e estados para ajuste do teclado
   const mainScrollRef = useRef(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  // Refs e estados para o carrossel de fotos (botões fixos)
+  // Refs e estados para o carrossel de fotos
   const galleryScrollRef = useRef(null);
   const [galleryScrollX, setGalleryScrollX] = useState(0);
   const [galleryLayoutWidth, setGalleryLayoutWidth] = useState(0);
@@ -67,7 +67,7 @@ export default function DetalhesEvento({ navigation, route }) {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
-  // Monitora abertura e fechamento do teclado para rolar até o campo e evitar sobreposição
+  // Monitora abertura e fechamento do teclado
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -93,7 +93,7 @@ export default function DetalhesEvento({ navigation, route }) {
     };
   }, []);
 
-  // Sincroniza estado de inscrição com o contexto e parâmetros de rota
+  // Sincroniza estado de inscrição com contexto
   useEffect(() => {
     const currentlySubscribed =
       routeParams.justSubscribed ||
@@ -109,7 +109,7 @@ export default function DetalhesEvento({ navigation, route }) {
     }
   }, [eventId, event?.id, routeParams.justSubscribed, routeParams.ticketCount, checkIsSubscribed]);
 
-  // Garante que o botão voltar nativo retorne para a tela anterior
+  // Trata botão voltar do dispositivo
   useEffect(() => {
     const onBackPress = () => {
       if (navigation?.canGoBack()) {
@@ -143,7 +143,7 @@ export default function DetalhesEvento({ navigation, route }) {
     }
   };
 
-  // Abre a simulação de pagamento "Pagamento da Trilha"
+  // Abre a tela de pagamento
   const handleOpenPayment = () => {
     if (remainingSpots <= 0) {
       Alert.alert('Esgotado', 'Desculpe, não há mais vagas disponíveis para este evento.');
@@ -155,7 +155,6 @@ export default function DetalhesEvento({ navigation, route }) {
       return;
     }
 
-    // Navega para a tela de Pagamento da Trilha
     navigation?.navigate('PagamentoTrilha', {
       event,
       ticketCount,
@@ -167,9 +166,6 @@ export default function DetalhesEvento({ navigation, route }) {
   const handleConfirmCancellation = () => {
     setIsCancelling(true);
 
-    // BACKEND INTEGRATION:
-    // POST /api/v1/events/:id/cancel-subscription
-    // Payload: { eventId: event.id }
     setTimeout(() => {
       setIsCancelling(false);
       setShowCancelModal(false);
@@ -185,13 +181,11 @@ export default function DetalhesEvento({ navigation, route }) {
     }, 600);
   };
 
-  // Envio de nova pergunta / aviso no quadro
+  // Envio de nova pergunta no quadro
   const handleSendComment = () => {
     const textTrimmed = newComment.trim();
     if (!textTrimmed) return;
 
-    // BACKEND INTEGRATION:
-    // POST /api/v1/events/:id/comments
     const newEntry = {
       id: `c_${Date.now()}`,
       userName: 'Você',
@@ -205,7 +199,7 @@ export default function DetalhesEvento({ navigation, route }) {
     Keyboard.dismiss();
   };
 
-  // Rolagem suave do carrossel ao clicar nos botões fixos
+  // Rolagem suave do carrossel de fotos
   const handleScrollLeft = () => {
     const targetX = Math.max(0, galleryScrollX - 152);
     galleryScrollRef.current?.scrollTo({ x: targetX, animated: true });
@@ -222,9 +216,7 @@ export default function DetalhesEvento({ navigation, route }) {
     const contentW = e.nativeEvent.contentSize.width;
 
     setGalleryScrollX(offsetX);
-    // Quando offsetX > 20, a primeira foto começa a ficar escondida -> exibe o botão da esquerda
     setCanScrollLeft(offsetX > 20);
-    // Quando o carrossel alcança o final -> oculta o botão da direita
     setCanScrollRight(offsetX + layoutW < contentW - 15);
   };
 
@@ -236,7 +228,6 @@ export default function DetalhesEvento({ navigation, route }) {
     }
   };
 
-  // Exibe dicas da trilha e fecha o modal de confirmação
   const handleShowTips = () => {
     setShowConfirmationModal(false);
     navigation?.navigate('DicasTrilha', {
@@ -245,7 +236,6 @@ export default function DetalhesEvento({ navigation, route }) {
     });
   };
 
-  // Valor total formatado
   const totalPrice = (event.price * ticketCount).toFixed(2).replace('.', ',');
 
   return (
@@ -269,7 +259,7 @@ export default function DetalhesEvento({ navigation, route }) {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* Header com Imagem de Capa do Evento */}
+          {/* Header com Capa */}
           <View style={styles.heroContainer}>
             <Image
               source={event.coverImage}
@@ -277,7 +267,6 @@ export default function DetalhesEvento({ navigation, route }) {
               resizeMode="cover"
             />
 
-            {/* Botão circular de fechar (X) no topo direito */}
             <TouchableOpacity
               style={styles.closeButton}
               onPress={handleClose}
@@ -287,9 +276,9 @@ export default function DetalhesEvento({ navigation, route }) {
             </TouchableOpacity>
           </View>
 
-          {/* Cartão Branco Principal Sobreposto */}
+          {/* Conteúdo Principal */}
           <View style={styles.cardContainer}>
-            {/* Título do Evento e Badge INSCRITO / CONCLUÍDA */}
+            {/* Título e Badges */}
             <View style={styles.titleRow}>
               <Text style={styles.eventTitle}>{event.title}</Text>
               {isHistory ? (
@@ -299,7 +288,7 @@ export default function DetalhesEvento({ navigation, route }) {
               ) : null}
             </View>
 
-            {/* Avaliação em estrelas */}
+            {/* Avaliação */}
             <View style={styles.ratingRow}>
               <FontAwesome name="star" size={13} color="#264A31" />
               <Text style={styles.ratingText}>
@@ -307,7 +296,7 @@ export default function DetalhesEvento({ navigation, route }) {
               </Text>
             </View>
 
-            {/* Informações do Guia */}
+            {/* Guia */}
             <TouchableOpacity
               style={styles.guideRow}
               activeOpacity={0.7}
@@ -325,13 +314,33 @@ export default function DetalhesEvento({ navigation, route }) {
                 style={styles.guideAvatar}
               />
               <Text style={styles.guideText}>
-                {event.guide?.name} - {event.guide?.role}
+                {event.guide?.name} • {event.guide?.role}
               </Text>
             </TouchableOpacity>
 
-            {/* Seção Descrição */}
+            {/* Descrição */}
             <Text style={styles.sectionHeaderGreen}>Descrição</Text>
             <Text style={styles.descriptionText}>{event.description}</Text>
+
+            {/* ATALHO PARA TELA DE DICAS */}
+            <TouchableOpacity
+              style={styles.tipsShortcutButton}
+              onPress={() =>
+                navigation?.navigate('DicasTrilha', {
+                  eventId: event.id,
+                  title: event.title,
+                })
+              }
+              activeOpacity={0.8}
+            >
+              <View style={styles.tipsShortcutContent}>
+                <Feather name="info" size={18} color={colors.primary} />
+                <Text style={styles.tipsShortcutText}>
+                  Ver recomendações e o que levar
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={colors.primary} />
+            </TouchableOpacity>
 
             {/* Local de Saída */}
             <View style={styles.departureBox}>
@@ -339,7 +348,7 @@ export default function DetalhesEvento({ navigation, route }) {
               <Text style={styles.departureValue}>{event.departureLocation}</Text>
             </View>
 
-            {/* Grid com Informações do Evento (Data, Horário, Duração, Distância) */}
+            {/* Grid de Informações */}
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Text style={styles.statLabel}>Data</Text>
@@ -362,7 +371,7 @@ export default function DetalhesEvento({ navigation, route }) {
               </View>
             </View>
 
-            {/* Badge de Vagas Restantes com Avatares Sobrepostos (oculto no histórico) */}
+            {/* Badge de Vagas Restantes */}
             {!isHistory && (
               <View style={styles.spotsBadge}>
                 <View style={styles.overlappingAvatars}>
@@ -411,7 +420,6 @@ export default function DetalhesEvento({ navigation, route }) {
                     }
                   }}
                 >
-                  {/* Cards de Fotos da Trilha (apenas fotos reais, sem opção de adicionar) */}
                   {(event.photos || [])
                     .filter((p) => !p.isUploadAction && p.image)
                     .map((photo, index) => (
@@ -425,7 +433,6 @@ export default function DetalhesEvento({ navigation, route }) {
                     ))}
                 </ScrollView>
 
-                {/* Botão Fixo Esquerda: aparece quando a primeira foto fica escondida */}
                 {canScrollLeft && (
                   <TouchableOpacity
                     style={[styles.galleryNavButton, styles.galleryNavButtonLeft]}
@@ -436,7 +443,6 @@ export default function DetalhesEvento({ navigation, route }) {
                   </TouchableOpacity>
                 )}
 
-                {/* Botão Fixo Direita: fixo no lugar, sumindo quando o carrossel chegar ao final */}
                 {canScrollRight && (
                   <TouchableOpacity
                     style={[styles.galleryNavButton, styles.galleryNavButtonRight]}
@@ -455,7 +461,6 @@ export default function DetalhesEvento({ navigation, route }) {
                 Quadro de Avisos/ Perguntas
               </Text>
 
-              {/* Lista de Mensagens / Perguntas */}
               {comments.map((comment, index) => (
                 <View key={comment.id || index}>
                   <View style={styles.commentItem}>
@@ -476,7 +481,6 @@ export default function DetalhesEvento({ navigation, route }) {
                 </View>
               ))}
 
-              {/* Campo para Digitar e Enviar Mensagem */}
               <View style={styles.commentInputContainer}>
                 <TextInput
                   style={styles.commentTextInput}
@@ -507,7 +511,7 @@ export default function DetalhesEvento({ navigation, route }) {
               </View>
             </View>
 
-            {/* Barra de Ação Inferior: Histórico (Desabilitado) / Inscrito / Inscrição */}
+            {/* Barra de Ação Inferior */}
             {isHistory ? (
               <View style={styles.registrationBar}>
                 <TouchableOpacity
@@ -519,7 +523,6 @@ export default function DetalhesEvento({ navigation, route }) {
                 </TouchableOpacity>
               </View>
             ) : isSubscribed ? (
-              // TELA DEPOIS DE INSCRITO: Botão Cancelar Inscrição
               <TouchableOpacity
                 style={styles.cancelSubscriptionButton}
                 onPress={() => setShowCancelModal(true)}
@@ -529,9 +532,7 @@ export default function DetalhesEvento({ navigation, route }) {
                 <Text style={styles.cancelSubscriptionText}>Cancelar Inscrição</Text>
               </TouchableOpacity>
             ) : (
-              // TELA ANTES DE INSCRITO: Stepper + Botão Inscrever-se com valor total
               <View style={styles.registrationBar}>
-                {/* Stepper de Quantidade (- 1 +) */}
                 <View style={styles.stepperContainer}>
                   <TouchableOpacity
                     style={styles.stepperButton}
@@ -562,7 +563,6 @@ export default function DetalhesEvento({ navigation, route }) {
                   </TouchableOpacity>
                 </View>
 
-                {/* Botão de Inscrição que direciona para Pagamento da Trilha */}
                 <TouchableOpacity
                   style={[
                     styles.subscribeButton,
@@ -581,14 +581,12 @@ export default function DetalhesEvento({ navigation, route }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Menu Inferior Fixo de Navegação (oculto quando o teclado estiver aberto) */}
+      {/* Menu Inferior */}
       {keyboardHeight === 0 && (
         <Menu activeTab="Trilhas" navigation={navigation} />
       )}
 
-      {/* ============================================================ */}
-      {/* MODAL DE CONFIRMAÇÃO DA TRILHA (Image 3) */}
-      {/* ============================================================ */}
+      {/* Modal de Confirmação */}
       <Modal
         visible={showConfirmationModal}
         transparent
@@ -597,7 +595,6 @@ export default function DetalhesEvento({ navigation, route }) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.confirmationModalCard}>
-            {/* Botão circular de fechar (X) sobreposto no topo direito */}
             <TouchableOpacity
               style={styles.modalCloseButton}
               onPress={() => setShowConfirmationModal(false)}
@@ -645,9 +642,7 @@ export default function DetalhesEvento({ navigation, route }) {
         </View>
       </Modal>
 
-      {/* ============================================================ */}
-      {/* MODAL DE CANCELAMENTO DA TRILHA (Image 4) */}
-      {/* ============================================================ */}
+      {/* Modal de Cancelamento */}
       <Modal
         visible={showCancelModal}
         transparent
@@ -656,7 +651,6 @@ export default function DetalhesEvento({ navigation, route }) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.cancelModalCard}>
-            {/* Botão circular de fechar (X) no topo direito */}
             <TouchableOpacity
               style={styles.modalCloseButton}
               onPress={() => setShowCancelModal(false)}
@@ -740,7 +734,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  /* Cartão de Conteúdo Sobreposto */
+  /* Cartão de Conteúdo */
   cardContainer: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
@@ -755,7 +749,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  /* Título, Badge e Rating */
+  /* Título e Badges */
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -816,7 +810,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  /* Seções de Texto */
+  /* Descrição */
   sectionHeaderGreen: {
     fontSize: 15,
     fontWeight: 'bold',
@@ -831,9 +825,34 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
 
+  /* Atalho de Dicas */
+  tipsShortcutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F4F7F4',
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 14,
+  },
+  tipsShortcutContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  tipsShortcutText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+    marginLeft: 10,
+  },
+
   /* Local de Saída */
   departureBox: {
-    marginTop: 12,
+    marginTop: 14,
   },
   departureLabel: {
     fontSize: 13,
@@ -846,7 +865,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  /* Grid de Estatísticas (Data, Horário, Duração, Distância) */
+  /* Grid de Informações */
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -868,7 +887,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  /* Badge de Vagas Restantes */
+  /* Vagas Restantes */
   spotsBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -897,7 +916,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  /* Galeria de Fotos */
+  /* Galeria */
   gallerySection: {
     marginTop: 16,
   },
@@ -945,7 +964,7 @@ const styles = StyleSheet.create({
     right: 8,
   },
 
-  /* Quadro de Avisos / Perguntas */
+  /* Quadro de Avisos */
   commentsSection: {
     marginTop: 12,
   },
@@ -1000,7 +1019,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  /* Barra de Inscrição e Preço (Antes de inscrito) */
+  /* Barra de Inscrição */
   registrationBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1076,7 +1095,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  /* Botão Cancelar Inscrição (Tela Depois de Inscrito - Image 2) */
+  /* Botão Cancelar Inscrição */
   cancelSubscriptionButton: {
     height: 48,
     borderRadius: 12,
@@ -1095,7 +1114,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* Overlay dos Modais */
+  /* Modais */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
@@ -1103,8 +1122,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-
-  /* Botão Circular Fechar (X) sobreposto no topo direito do modal */
   modalCloseButton: {
     position: 'absolute',
     top: -18,
@@ -1124,8 +1141,6 @@ const styles = StyleSheet.create({
     elevation: 5,
     zIndex: 10,
   },
-
-  /* Card do Modal de Confirmação da Trilha (Image 3) */
   confirmationModalCard: {
     width: '100%',
     maxWidth: 320,
@@ -1180,8 +1195,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-
-  /* Card do Modal de Cancelamento da Trilha (Image 4) */
   cancelModalCard: {
     width: '100%',
     maxWidth: 320,

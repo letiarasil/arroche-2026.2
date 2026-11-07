@@ -5,12 +5,12 @@ import StepHeader from '../components/StepHeader';
 import ButtonContinue from '../components/ButtonContinue';
 import FooterTerms from '../components/FooterTerms';
 import { colors } from '../constants/colors';
-import { useAuth } from '../contexts/AuthContext';
+// Autenticação tratada nas etapas posteriores
 
 function VerifyEmail({ navigation, route }) {
   const [code, setCode] = useState(['', '', '', '', '']);
   const inputsRef = useRef([]);
-  const { login } = useAuth();
+  const profileType = route?.params?.profileType || 'trilheiro';
 
   // Pega o email vindo da tela anterior ou usa o fallback
   const userEmail = route?.params?.email || 'sarah.jansen@gmail.com';
@@ -44,9 +44,9 @@ function VerifyEmail({ navigation, route }) {
         
         {/* Cabeçalho da etapa 2 */}
         <StepHeader
-          title="Verifique seu email 2 / 3"
-          currentStep={2}
-          totalSteps={3}
+          title="Verifique seu email 3 / 4"
+          currentStep={3}
+          totalSteps={4}
           onBack={() => navigation?.goBack()}
         />
 
@@ -83,7 +83,7 @@ function VerifyEmail({ navigation, route }) {
           <ButtonContinue
             disabled={isButtonDisabled}
             onPress={() => {
-              navigation?.navigate('CreatePassword', { email: userEmail });
+              navigation?.navigate('CreatePassword', { email: userEmail, profileType });
             }}
           />
 

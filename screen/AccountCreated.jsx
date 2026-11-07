@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, Alert } from 'react-native';
 import { MaterialDesignIcons } from '@react-native-vector-icons/material-design-icons';
 
 import ButtonContinue from '../components/ButtonContinue';
@@ -6,10 +6,19 @@ import FooterTerms from '../components/FooterTerms';
 import { colors } from '../constants/colors';
 import { useAuth } from '../contexts/AuthContext';
 
-function AccountCreated({ navigation }) {
+function AccountCreated({ navigation, route }) {
+  const profileType = route?.params?.profileType || 'trilheiro';
   const { enterApp, login } = useAuth();
 
   const handleGoToApp = () => {
+    if (profileType === 'guia') {
+      Alert.alert(
+        'Perfil de Guia',
+        'Conta criada com sucesso! O fluxo e ferramentas exclusivas para guias ainda estão em desenvolvimento e estarão disponíveis em breve.',
+        [{ text: 'Entendido' }]
+      );
+      return;
+    }
     // Ativa a sessão do usuário no AuthContext
     if (enterApp) {
       enterApp();
@@ -20,7 +29,7 @@ function AccountCreated({ navigation }) {
     // Redireciona para a página inicial (tela de Trilhas)
     try {
       navigation?.navigate('Trilhas');
-    } catch (e) {
+    } catch (_e) {
       // Caso a navegação seja tratada automaticamente pela troca de pilha do RootStack
     }
   };

@@ -81,8 +81,17 @@ function Login({ navigation }) {
             mockDatabase?.defaultUser?.email?.toLowerCase() === trimmedEmail &&
             mockDatabase?.defaultUser?.password === trimmedPassword;
 
-          if (isMatchRegistered || isMatchDefault) {
-            login();
+          const isMatchDefaultGuide =
+            mockDatabase?.defaultGuideUser?.email?.toLowerCase() === trimmedEmail &&
+            mockDatabase?.defaultGuideUser?.password === trimmedPassword;
+
+          if (isMatchRegistered || isMatchDefault || isMatchDefaultGuide) {
+            const matchedUser = isMatchRegistered
+              ? registered
+              : isMatchDefaultGuide
+              ? mockDatabase.defaultGuideUser
+              : mockDatabase.defaultUser;
+            login(matchedUser);
             return;
           }
 
@@ -220,7 +229,7 @@ function Login({ navigation }) {
             {/* Link Não tem uma conta? Cadastre-se */}
             <TouchableOpacity
               style={styles.registerContainer}
-              onPress={() => navigation?.navigate('CreateEmail')}
+              onPress={() => navigation?.navigate('ChooseProfile')}
               activeOpacity={0.7}
             >
               <Text style={styles.registerText}>

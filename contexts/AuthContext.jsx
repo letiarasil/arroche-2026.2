@@ -7,6 +7,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { createUserProfile, getUserProfile } from '../services/userService';
+import { getGuideProfile } from '../services/guideService';
 import { mockDatabase } from '../constants/mockAuth';
 
 const AuthContext = createContext({});
@@ -14,6 +15,7 @@ const AuthContext = createContext({});
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [guideProfile, setGuideProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isRegistrationPending, setIsRegistrationPending] = useState(false);
@@ -26,6 +28,14 @@ export function AuthProvider({ children }) {
         try {
           const profile = await getUserProfile(currentUser.uid);
           setUserProfile(profile);
+          if (profile?.role === 'guide') {
+            try {
+              const guideData = await getGuideProfile(currentUser.uid);
+              setGuideProfile(guideData);
+            } catch (err) {
+              console.warn('Erro ao carregar dados do guia:', err);
+            }
+          }
         } catch (error) {
           console.warn('Não foi possível obter perfil do Firestore:', error?.message);
         }

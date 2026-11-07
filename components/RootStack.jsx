@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useAuth } from "../contexts/AuthContext";
 
 import SignIn from "../screen/SignIn";
+import ChooseProfile from "../screen/ChooseProfile";
 import CreateEmail from "../screen/CreateEmail";
 import VerifyEmail from "../screen/VerifyEmail";
 import Trilhas from "../screen/Trilhas";
@@ -47,6 +48,7 @@ function RootStack() {
                 <>
                     <Stack.Screen name="Login" component={Login} />  
                     <Stack.Screen name="SignIn" component={SignIn} /> 
+                    <Stack.Screen name="ChooseProfile" component={ChooseProfile} /> 
                     <Stack.Screen name="CreateEmail" component={CreateEmail} />  
                     <Stack.Screen name="VerifyEmail" component={VerifyEmail} /> 
                     <Stack.Screen name="CreatePassword" component={CreatePassword} />  

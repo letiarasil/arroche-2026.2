@@ -16,7 +16,7 @@ import StepHeader from '../components/StepHeader';
 import ButtonContinue from '../components/ButtonContinue';
 import FooterTerms from '../components/FooterTerms';
 import { colors } from '../constants/colors';
-import { mockDatabase } from '../constants/mockAuth';
+import { mockDatabase, enrichRegisteredGuideUser } from '../constants/mockAuth';
 import { useAuth } from '../contexts/AuthContext';
 
 function CreatePassword({ navigation, route }) {
@@ -31,6 +31,7 @@ function CreatePassword({ navigation, route }) {
 
   // Email recebido das etapas anteriores (caso necessário no fluxo)
   const userEmail = route?.params?.email || '';
+  const profileType = route?.params?.profileType || 'trilheiro';
 
   // Formatação com máscara de CPF: 000.000.000-00
   const handleCpfChange = (text) => {
@@ -85,8 +86,19 @@ function CreatePassword({ navigation, route }) {
 
       // Conecta com o Firebase Auth e cria o perfil no Firestore
       if (signUp) {
-        await signUp(userEmail.trim(), password, name.trim(), 'hiker', {
+        const role = profileType === 'guia' ? 'guide' : 'hiker';
+        await signUp(userEmail.trim(), password, name.trim(), role, {
           cpf: cpf.replace(/\D/g, ''),
+          profileType,
+        });
+      }
+
+      if (profileType === 'guia') {
+        enrichRegisteredGuideUser({
+          id: `g-${Date.now()}`,
+          name: name.trim(),
+          email: userEmail.trim(),
+          cpf,
         });
       }
 
@@ -95,6 +107,7 @@ function CreatePassword({ navigation, route }) {
         email: userEmail,
         name,
         cpf,
+        profileType,
       });
     } catch (error) {
       console.warn('Erro ao criar conta no Firebase:', error);
@@ -111,11 +124,13 @@ function CreatePassword({ navigation, route }) {
           password,
           name,
           cpf,
+        profileType,
         };
         navigation?.navigate('AccountCreated', {
           email: userEmail,
           name,
           cpf,
+        profileType,
         });
       }
     } finally {
@@ -132,9 +147,9 @@ function CreatePassword({ navigation, route }) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <StepHeader
-          title="Conclua seu cadastro 3 / 3"
-          currentStep={3}
-          totalSteps={3}
+          title="Conclua seu cadastro 4 / 4"
+          currentStep={4}
+          totalSteps={4}
           onBack={() => navigation?.goBack()}
         />
 

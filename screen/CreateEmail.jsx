@@ -6,7 +6,8 @@ import ButtonContinue from '../components/ButtonContinue';
 import FooterTerms from '../components/FooterTerms';
 import { colors } from '../constants/colors';
 
-function CreateEmail({ navigation }) {
+function CreateEmail({ navigation, route }) {
+  const profileType = route?.params?.profileType || 'trilheiro';
   const [email, setEmail] = useState('');
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -21,9 +22,9 @@ function CreateEmail({ navigation }) {
         
         {/* Cabeçalho da etapa 1 */}
         <StepHeader
-          title="Adicione seu email 1 / 3"
-          currentStep={1}
-          totalSteps={3}
+          title="Adicione seu email 2 / 4"
+          currentStep={2}
+          totalSteps={4}
           onBack={() => navigation?.goBack()}
         />
       
@@ -46,7 +47,7 @@ function CreateEmail({ navigation }) {
           <ButtonContinue 
             disabled={isButtonDisabled}
             onPress={() => {
-              navigation?.navigate('VerifyEmail', { email });
+              navigation?.navigate('VerifyEmail', { email, profileType });
             }}
           />
         </View>

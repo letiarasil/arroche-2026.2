@@ -10,7 +10,8 @@ import {
   query, 
   where, 
   orderBy, 
-  serverTimestamp 
+  serverTimestamp,
+  onSnapshot 
 } from 'firebase/firestore';
 import { resolveTrailImage } from './trailImages';
 
@@ -139,16 +140,27 @@ export const getTrailReviews = async (trailId) => {
 /**
  * Buscar trilhas cadastradas exclusivamente pelo guia autenticado
  */
-export const getGuideTrails = async (guideId) => {
+export const getGuideTrails = async (guideId, guideName = null) => {
   // Garante que o guideId é o UID autenticado real
   const currentUid = guideId || auth.currentUser?.uid;
-  if (!currentUid) return [];
+  if (!currentUid && !guideName) return [];
 
   try {
-    const q = query(TRAILS_REF, where('guideId', '==', currentUid));
-    const snap = await getDocs(q);
-    return snap.docs
-      .map((d) => normalizeTrail(d.id, d.data()))
+    let trails = [];
+    if (currentUid) {
+      const q = query(TRAILS_REF, where('guideId', '==', currentUid));
+      const snap = await getDocs(q);
+      trails = snap.docs.map((d) => normalizeTrail(d.id, d.data()));
+    }
+
+    // Se o guia possui nome cadastrado (ex: guias do seed), busca também por author para não perder dados
+    if (guideName && trails.length === 0) {
+      const qAuthor = query(TRAILS_REF, where('author', '==', guideName));
+      const snapAuthor = await getDocs(qAuthor);
+      trails = snapAuthor.docs.map((d) => normalizeTrail(d.id, d.data()));
+    }
+
+    return trails
       .filter((t) => t.status !== 'cancelada' && t.status !== 'concluida');
   } catch (err) {
     console.error('Erro ao consultar trilhas do guia no Firestore:', err?.message);
@@ -184,8 +196,10 @@ export const createGuideTrail = async (guideId, trailData) => {
     departureTime: trailData.departureTime || '',
     distance: trailData.distance || '',
     duration: trailData.duration || '',
+    time: trailData.time || trailData.duration || '',
     capacity: capacityNum,
     totalSpots: capacityNum,
+    remainingSpots: capacityNum,
     filledSpots: 0,
     price: priceNum,
     formattedPrice: `R$ ${priceNum.toFixed(2).replace('.', ',')}`,
@@ -339,6 +353,82 @@ export const addTrailSubscription = async (trailId, subscriberData) => {
   } catch (_e) {}
 
   return { id: docRef.id, ...payload };
+};
+
+/**
+ * Escutar inscrições de uma trilha em tempo real (Lista de Frequência do Guia)
+ */
+export const listenTrailSubscriptions = (trailId, onUpdate, onError) => {
+  if (!trailId) return () => {};
+
+  const subCol = collection(db, 'trails', trailId, 'subscriptions');
+  return onSnapshot(
+    subCol,
+    (snap) => {
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((item) => item.status !== 'cancelada');
+      onUpdate?.(list);
+    },
+    (err) => {
+      console.warn('Erro ao escutar inscrições em tempo real:', err?.message);
+      onError?.(err);
+    }
+  );
+};
+
+/**
+ * Cancelar inscrição de um participante e devolver as vagas
+ */
+export const cancelTrailSubscription = async (trailId, userId, ticketCount = 1) => {
+  if (!trailId) throw new Error('ID da trilha é obrigatório');
+  const currentUid = userId || auth.currentUser?.uid;
+
+  try {
+    const subCol = collection(db, 'trails', trailId, 'subscriptions');
+    const q = query(subCol, where('userId', '==', currentUid));
+    const snap = await getDocs(q);
+
+    for (const docSnap of snap.docs) {
+      await updateDoc(doc(db, 'trails', trailId, 'subscriptions', docSnap.id), {
+        status: 'cancelada',
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    // Devolve vagas na trilha
+    const trailRef = doc(db, 'trails', trailId);
+    const trailSnap = await getDoc(trailRef);
+    if (trailSnap.exists()) {
+      const currentFilled = trailSnap.data().filledSpots || 0;
+      const newFilled = Math.max(0, currentFilled - ticketCount);
+      await updateDoc(trailRef, {
+        filledSpots: newFilled,
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (err) {
+    console.warn('Erro ao cancelar inscrição no Firestore:', err?.message);
+    throw err;
+  }
+};
+
+/**
+ * Alternar presença de um participante na Lista de Frequência pelo Guia
+ */
+export const toggleParticipantAttendance = async (trailId, subscriptionId, isPresent) => {
+  if (!trailId || !subscriptionId) return;
+
+  try {
+    const subDocRef = doc(db, 'trails', trailId, 'subscriptions', subscriptionId);
+    await updateDoc(subDocRef, {
+      present: isPresent,
+      checkedAt: isPresent ? serverTimestamp() : null,
+    });
+  } catch (err) {
+    console.warn('Erro ao atualizar presença na Lista de Frequência:', err?.message);
+    throw err;
+  }
 };
 
 /**

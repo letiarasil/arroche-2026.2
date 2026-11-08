@@ -59,6 +59,31 @@ service cloud.firestore {
         allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
         allow update: if false;
       }
+
+      // Subcoleção: subscriptions (Inscrições e Lista de Frequência)
+      match /subscriptions/{subscriptionId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated();
+      }
+
+      // Subcoleção: questions (Quadro de avisos / perguntas)
+      match /questions/{questionId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated();
+      }
+    }
+
+    // Coleção: events (Eventos de trilhas agendadas)
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if false;
+
+      match /subscriptions/{subId} {
+        allow read, write: if isAuthenticated();
+      }
     }
 
   }

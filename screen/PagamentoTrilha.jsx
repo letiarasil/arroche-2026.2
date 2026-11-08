@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
@@ -18,6 +19,9 @@ import { getEventDetails } from '../constants/mockEvents';
 import Menu from '../components/Menu';
 import UserAvatar from '../components/UserAvatar';
 import { useSubscriptions } from '../contexts/SubscriptionsContext';
+import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../services/firebase';
+import { addTrailSubscription } from '../services/trailService';
 
 // Ícone SVG de Cartão de Crédito
 function CardIcon({ size = 22, color = '#3B82F6' }) {
@@ -36,6 +40,7 @@ export default function PagamentoTrilha({ navigation, route }) {
   const event = routeParams.event || getEventDetails(routeParams.eventId, routeParams.item);
   const ticketCount = routeParams.ticketCount || 1;
 
+  const { user, userProfile } = useAuth();
   const { subscribeToTrail } = useSubscriptions();
 
   // Seleção da forma de pagamento: 'pix' ou 'card'
@@ -56,19 +61,46 @@ export default function PagamentoTrilha({ navigation, route }) {
   const formattedServiceFee = serviceFee.toFixed(2).replace('.', ',');
   const formattedTotal = rawTotal.toFixed(2).replace('.', ',');
 
-  // 1. Processa o pagamento e exibe o 1º Modal (Confirmação com política de cancelamento)
-  const handleFinalizePayment = () => {
+  // 1. Processa o pagamento e persiste no Firestore + contexto
+  const handleFinalizePayment = async () => {
+    if (isProcessing) return;
     setIsProcessing(true);
 
-    setTimeout(() => {
-      setIsProcessing(false);
-      
-      // Inscreve a trilha na lista do usuário no contexto local/Firestore
+    try {
+      const trailId = event.id || event.trailId;
+      const currentUserId = auth.currentUser?.uid || user?.uid || 'anon';
+      const currentUserName = userProfile?.name || auth.currentUser?.displayName || 'Aventureiro';
+      const currentUserEmail = userProfile?.email || auth.currentUser?.email || '';
+      const currentUserAvatar = userProfile?.avatarUrl || userProfile?.avatar || auth.currentUser?.photoURL || null;
+
+      // Grava a inscrição do usuário no Firebase Firestore
+      if (trailId) {
+        await addTrailSubscription(trailId, {
+          userId: currentUserId,
+          name: currentUserName,
+          email: currentUserEmail,
+          avatar: currentUserAvatar,
+          ticketCount,
+          paymentMethod,
+          totalPrice: rawTotal,
+          status: 'confirmada',
+        });
+      }
+
+      // Inscreve a trilha na lista do usuário no contexto
       subscribeToTrail(event, { ticketCount });
 
       // Abre o 1º modal: Deu certo + aviso de cancelamento
       setShowSuccessModal(true);
-    }, 700);
+    } catch (err) {
+      console.error('Erro ao registrar inscrição no Firebase:', err);
+      Alert.alert(
+        'Erro na Inscrição',
+        'Ocorreu um erro ao processar a inscrição no banco de dados. Tente novamente.'
+      );
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // 2. Transiciona do 1º Modal para o 2º Modal (Parabéns + Dicas da Trilha)

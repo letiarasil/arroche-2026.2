@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -24,14 +24,37 @@ import { uploadImageToStorage } from '../services/storageService';
 import MenuGuia from '../components/MenuGuia';
 
 export default function CadastrarEvento({ navigation }) {
-  const { user, userProfile, guideProfile } = useAuth();
+  const { user, userProfile, guideProfile, isGuide } = useAuth();
   const guideUid = auth.currentUser?.uid || user?.uid;
   const guideName = guideProfile?.name || userProfile?.name || 'Guia profissional';
+
+  // Proteção de rota e regra de negócio: apenas Guias podem cadastrar eventos
+  useEffect(() => {
+    if (!isGuide) {
+      Alert.alert(
+        'Acesso Restrito',
+        'Apenas guias credenciados têm permissão para acessar a área de criação de eventos.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (navigation?.canGoBack()) {
+                navigation.goBack();
+              } else {
+                navigation?.replace('Trilhas');
+              }
+            },
+          },
+        ]
+      );
+    }
+  }, [isGuide, navigation]);
 
   // Estados dos campos do formulário
   const [coverImageUri, setCoverImageUri] = useState(null);
   const [trailName, setTrailName] = useState('');
   const [description, setDescription] = useState('');
+  const [difficulty, setDifficulty] = useState('Fácil');
   const [departureLocation, setDepartureLocation] = useState('');
   const [date, setDate] = useState('');
   const [departureTime, setDepartureTime] = useState('');
@@ -353,17 +376,25 @@ export default function CadastrarEvento({ navigation }) {
         title: trailName.trim(),
         name: trailName.trim(),
         description: description.trim(),
+        difficulty: difficulty || 'Fácil',
         departureLocation: departureLocation.trim(),
         date: date.trim(),
         departureTime: departureTime.trim(),
         distance: formattedDistance,
         duration: formattedDuration,
+        time: formattedDuration,
         capacity: capacityNum,
         totalSpots: capacityNum,
-        price: parseFloat(price) || 0.0,
+        remainingSpots: capacityNum,
+        price: parseFloat(price.replace('R$', '').replace(',', '.').trim()) || 0.0,
         imageUrl: coverDownloadUrl,
+        image: coverDownloadUrl,
         galleryUrls: galleryDownloadUrls,
         guideName,
+        guideId: guideUid,
+        author: guideName,
+        isActive: true,
+        status: 'ativa',
       });
 
       // 7. Notificação de sucesso e redirecionamento para a Home do Guia
@@ -390,6 +421,17 @@ export default function CadastrarEvento({ navigation }) {
       setUploadProgressText('');
     }
   };
+
+  if (!isGuide) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 12, color: '#6B7280', fontSize: 14 }}>
+          Verificando permissões de guia...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -476,6 +518,31 @@ export default function CadastrarEvento({ navigation }) {
             multiline
             numberOfLines={3}
           />
+
+          {/* Nível de Dificuldade */}
+          <Text style={styles.label}>Nível de Dificuldade *</Text>
+          <View style={styles.difficultyContainer}>
+            {['Fácil', 'Médio', 'Difícil'].map((lvl) => (
+              <TouchableOpacity
+                key={lvl}
+                style={[
+                  styles.difficultyOption,
+                  difficulty === lvl && styles.difficultyOptionSelected,
+                ]}
+                onPress={() => setDifficulty(lvl)}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.difficultyOptionText,
+                    difficulty === lvl && styles.difficultyOptionTextSelected,
+                  ]}
+                >
+                  {lvl}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           {/* Local de Saída */}
           <Text style={styles.label}>Local de Saída *</Text>
@@ -783,6 +850,35 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginTop: 10,
     marginBottom: 6,
+  },
+  difficultyContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  difficultyOption: {
+    flex: 1,
+    paddingVertical: 10,
+    marginHorizontal: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  difficultyOptionSelected: {
+    backgroundColor: '#2E7D32',
+    borderColor: '#2E7D32',
+  },
+  difficultyOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  difficultyOptionTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   input: {
     backgroundColor: '#FFFFFF',

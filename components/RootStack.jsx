@@ -82,11 +82,6 @@ function RootStack() {
                         <Stack.Screen name="PerfilGuia" component={PerfilGuia} />
                         <Stack.Screen name="Salvos" component={Salvos} />
                         <Stack.Screen name="Perfil" component={Perfil} />
-                        <Stack.Screen name="HomeGuia" component={HomeGuia} />
-                        <Stack.Screen name="MinhasTrilhasGuia" component={MinhasTrilhasGuia} />
-                        <Stack.Screen name="GerenciarTrilhaGuia" component={GerenciarTrilhaGuia} />
-                        <Stack.Screen name="CadastrarEvento" component={CadastrarEvento} />
-                        <Stack.Screen name="EditarEventoGuia" component={EditarEventoGuia} />
                     </>
                 )
             ) : (

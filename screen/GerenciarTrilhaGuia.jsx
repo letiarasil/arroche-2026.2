@@ -21,6 +21,8 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   getTrailById,
   getTrailSubscriptions,
+  listenTrailSubscriptions,
+  toggleParticipantAttendance,
   getTrailQuestions,
   addTrailQuestion,
   cancelGuideTrail,
@@ -90,6 +92,46 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Listener em tempo real para Inscrições e Lista de Frequência no Firestore
+  useEffect(() => {
+    if (!trailId) return;
+
+    setLoadingSubscriptions(true);
+    const unsubscribe = listenTrailSubscriptions(
+      trailId,
+      (subsList) => {
+        setSubscriptions(subsList || []);
+        setLoadingSubscriptions(false);
+      },
+      (error) => {
+        console.warn('Erro na sincronização da lista de inscritos:', error?.message);
+        setLoadingSubscriptions(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [trailId]);
+
+  // Alternar presença do participante na Lista de Frequência
+  const handleToggleAttendance = async (participantId, currentPresent) => {
+    const nextPresent = !currentPresent;
+
+    // Atualização otimista na tela do guia
+    setSubscriptions((prev) =>
+      prev.map((p) => (p.id === participantId ? { ...p, present: nextPresent } : p))
+    );
+
+    try {
+      await toggleParticipantAttendance(trailId, participantId, nextPresent);
+    } catch (err) {
+      // Reverte estado em caso de falha
+      setSubscriptions((prev) =>
+        prev.map((p) => (p.id === participantId ? { ...p, present: currentPresent } : p))
+      );
+      Alert.alert('Erro', 'Não foi possível salvar o status de presença.');
+    }
+  };
 
   // Enviar nova mensagem no Quadro de Avisos
   const handleSendComment = async () => {
@@ -163,7 +205,12 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
   const coverSource = resolveTrailImage(trail.coverImageKey || trail.imageKey || trail.coverImage || trail.image);
   const guideDisplayName = trail.guideName || guideProfile?.name || userProfile?.name || 'João Lucas';
   const totalCapacity = trail.capacity || trail.totalSpots || 12;
-  const filledCount = subscriptions.length > 0 ? subscriptions.length : (trail.filledSpots || 10);
+  const totalBookedSpots = subscriptions.reduce(
+    (sum, s) => sum + (parseInt(s.ticketCount, 10) || 1),
+    0
+  );
+  const filledCount = subscriptions.length > 0 ? totalBookedSpots : (trail.filledSpots || 0);
+  const presentCount = subscriptions.filter((s) => s.present).length;
   const priceDisplay = trail.formattedPrice || (trail.price ? `R$ ${Number(trail.price).toFixed(2).replace('.', ',')}` : 'R$ 10,00');
 
   return (
@@ -339,63 +386,120 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
             )}
 
             {/* ======================================================== */}
-            {/* ABA 2: INSCRIÇÕES */}
+            {/* ABA 2: INSCRIÇÕES E LISTA DE FREQUÊNCIA */}
             {/* ======================================================== */}
             {activeTab === 'inscricoes' && (
               <View style={styles.tabContent}>
-                {/* Título com Quantidade de Vagas */}
-                <Text style={styles.vagasTitle}>{totalCapacity} Vagas</Text>
-
-                {/* Resumo de Vagas Preenchidas e Valor */}
-                <View style={styles.inscricoesMetaRow}>
+                {/* Cabeçalho da Lista de Frequência com Indicador de Tempo Real */}
+                <View style={styles.frequenciaHeader}>
                   <View>
-                    <Text style={styles.metaSubLabel}>Vagas Preenchidas:</Text>
-                    <Text style={styles.metaSubValue}>{filledCount}/{totalCapacity}</Text>
+                    <Text style={styles.vagasTitle}>Lista de Frequência</Text>
+                    <Text style={styles.frequenciaSubtitle}>
+                      Controle e conferência de aventureiros em tempo real
+                    </Text>
                   </View>
+                  <View style={styles.liveBadge}>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveText}>Ao vivo</Text>
+                  </View>
+                </View>
 
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={styles.metaSubLabel}>Valor por pessoa</Text>
-                    <Text style={styles.metaSubValue}>{priceDisplay}</Text>
+                {/* Métricas da Lista de Frequência */}
+                <View style={styles.frequenciaMetricsGrid}>
+                  <View style={styles.metricCard}>
+                    <Text style={styles.metricNumber}>{filledCount}/{totalCapacity}</Text>
+                    <Text style={styles.metricLabel}>Vagas Ocupadas</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <Text style={styles.metricNumber}>{subscriptions.length}</Text>
+                    <Text style={styles.metricLabel}>Inscritos</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <Text style={[styles.metricNumber, { color: '#2E7D32' }]}>{presentCount}</Text>
+                    <Text style={styles.metricLabel}>Presentes</Text>
                   </View>
                 </View>
 
                 {/* Divisor */}
                 <View style={styles.horizontalDivider} />
 
-                {/* Lista de Pessoas Inscritas (Carregadas do Firebase) */}
+                {/* Lista de Pessoas Inscritas (Carregadas do Firebase em Tempo Real) */}
                 {loadingSubscriptions ? (
                   <View style={{ paddingVertical: 30, alignItems: 'center' }}>
                     <ActivityIndicator size="small" color={colors.primary} />
-                    <Text style={styles.loadingText}>Carregando inscritos...</Text>
+                    <Text style={styles.loadingText}>Sincronizando participantes...</Text>
                   </View>
                 ) : subscriptions.length === 0 ? (
                   <View style={styles.emptySubscriptionsContainer}>
                     <Feather name="users" size={38} color="#9CA3AF" />
                     <Text style={styles.emptySubsTitle}>Nenhum participante inscrito</Text>
                     <Text style={styles.emptySubsSubtitle}>
-                      Quando os aventureiros realizarem a inscrição nesta trilha, os nomes e e-mails aparecerão listados aqui.
+                      Assim que os aventureiros se inscreverem nesta trilha pelo app, os nomes aparecerão aqui em tempo real.
                     </Text>
                   </View>
                 ) : (
-                  subscriptions.map((participant) => (
-                    <View key={participant.id} style={styles.participantCard}>
-                      <View style={styles.participantAvatarWrapper}>
-                        {participant.avatar ? (
-                          <Image
-                            source={{ uri: participant.avatar }}
-                            style={styles.participantAvatarImg}
-                          />
-                        ) : (
-                          <Feather name="user" size={18} color={colors.primary} />
-                        )}
-                      </View>
+                  subscriptions.map((participant) => {
+                    const isPresent = Boolean(participant.present);
+                    const spots = participant.ticketCount || 1;
 
-                      <View style={styles.participantInfo}>
-                        <Text style={styles.participantName}>{participant.name}</Text>
-                        <Text style={styles.participantEmail}>{participant.email}</Text>
+                    return (
+                      <View key={participant.id} style={styles.participantCard}>
+                        <View style={styles.participantAvatarWrapper}>
+                          {participant.avatar ? (
+                            <Image
+                              source={{ uri: participant.avatar }}
+                              style={styles.participantAvatarImg}
+                            />
+                          ) : (
+                            <Feather name="user" size={18} color={colors.primary} />
+                          )}
+                        </View>
+
+                        <View style={styles.participantInfo}>
+                          <Text style={styles.participantName}>{participant.name || 'Aventureiro'}</Text>
+                          <Text style={styles.participantEmail} numberOfLines={1}>
+                            {participant.email || 'Email não informado'}
+                          </Text>
+                          <View style={styles.participantBadgesRow}>
+                            <View style={styles.spotsBadge}>
+                              <Feather name="tag" size={10} color="#2E7D32" style={{ marginRight: 3 }} />
+                              <Text style={styles.spotsBadgeText}>
+                                {spots} vaga{spots > 1 ? 's' : ''}
+                              </Text>
+                            </View>
+                            <View style={styles.statusConfirmadoBadge}>
+                              <Text style={styles.statusConfirmadoText}>Confirmada</Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        {/* Botão de Marcar / Desmarcar Presença para o Guia */}
+                        <TouchableOpacity
+                          style={[
+                            styles.attendanceBtn,
+                            isPresent && styles.attendanceBtnPresent,
+                          ]}
+                          activeOpacity={0.75}
+                          onPress={() => handleToggleAttendance(participant.id, isPresent)}
+                        >
+                          <Feather
+                            name={isPresent ? 'check-circle' : 'circle'}
+                            size={14}
+                            color={isPresent ? '#FFFFFF' : '#4B5563'}
+                            style={{ marginRight: 4 }}
+                          />
+                          <Text
+                            style={[
+                              styles.attendanceBtnText,
+                              isPresent && styles.attendanceBtnTextPresent,
+                            ]}
+                          >
+                            {isPresent ? 'Presente' : 'Check-in'}
+                          </Text>
+                        </TouchableOpacity>
                       </View>
-                    </View>
-                  ))
+                    );
+                  })
                 )}
               </View>
             )}
@@ -638,12 +742,68 @@ const styles = StyleSheet.create({
   sendButton: {
     padding: 6,
   },
-  /* ABA 2: Inscrições */
-  vagasTitle: {
-    fontSize: 26,
+  /* ABA 2: Inscrições e Lista de Frequência */
+  frequenciaHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  frequenciaSubtitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#16A34A',
+    marginRight: 5,
+  },
+  liveText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#16A34A',
+  },
+  frequenciaMetricsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    gap: 8,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  metricNumber: {
+    fontSize: 16,
     fontWeight: '800',
     color: '#111827',
-    marginBottom: 10,
+  },
+  metricLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  vagasTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111827',
   },
   inscricoesMetaRow: {
     flexDirection: 'row',
@@ -708,6 +868,60 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     marginTop: 2,
+  },
+  participantBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  spotsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  spotsBadgeText: {
+    fontSize: 11,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  statusConfirmadoBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  statusConfirmadoText: {
+    fontSize: 10.5,
+    color: '#15803D',
+    fontWeight: '700',
+  },
+  attendanceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  attendanceBtnPresent: {
+    backgroundColor: '#2E7D32',
+    borderColor: '#2E7D32',
+  },
+  attendanceBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  attendanceBtnTextPresent: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   emptySubscriptionsContainer: {
     alignItems: 'center',

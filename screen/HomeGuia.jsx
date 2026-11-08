@@ -32,7 +32,29 @@ const TABS = [
 ];
 
 export default function HomeGuia({ navigation, route }) {
-  const { user, userProfile, guideProfile } = useAuth();
+  const { user, userProfile, guideProfile, isGuide } = useAuth();
+
+  // Proteção de rota para guias
+  useEffect(() => {
+    if (!isGuide) {
+      Alert.alert(
+        'Acesso Restrito',
+        'Esta área é exclusiva para guias credenciados.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (navigation?.canGoBack()) {
+                navigation.goBack();
+              } else {
+                navigation?.replace('Trilhas');
+              }
+            },
+          },
+        ]
+      );
+    }
+  }, [isGuide, navigation]);
 
   // Identificação do guia autenticado real
   const guideId = auth.currentUser?.uid || user?.uid;
@@ -63,7 +85,7 @@ export default function HomeGuia({ navigation, route }) {
     try {
       // Busca do Cloud Firestore as trilhas vinculadas exclusivamente a este guia autenticado
       const [fetchedTrails, fetchedHistory] = await Promise.all([
-        getGuideTrails(guideId),
+        getGuideTrails(guideId, guideName),
         getGuideHistory(guideId),
       ]);
 
@@ -75,7 +97,7 @@ export default function HomeGuia({ navigation, route }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [guideId]);
+  }, [guideId, guideName]);
 
   // Recarrega sempre que a tela ganha foco (útil após cadastrar/editar/cancelar)
   useEffect(() => {
@@ -141,6 +163,14 @@ export default function HomeGuia({ navigation, route }) {
   const handleOpenCadastrarEvento = () => {
     navigation?.navigate('CadastrarEvento');
   };
+
+  if (!isGuide) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

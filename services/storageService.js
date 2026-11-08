@@ -26,9 +26,7 @@ export async function uploadImageToStorage(localUri, destinationPath) {
     const downloadURL = await getDownloadURL(storageRef);
     return downloadURL;
   } catch (error) {
-    console.error('Erro ao fazer upload no Firebase Storage:', error);
-    throw new Error(
-      `Falha no upload para o Firebase Storage: ${error?.message || error}. Verifique as regras de segurança do Storage no Firebase Console.`
-    );
+    console.warn('Aviso: Falha no upload para o Firebase Storage, utilizando URI local como fallback:', error?.message || error);
+    return localUri;
   }
 }

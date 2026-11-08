@@ -22,6 +22,9 @@ import { getEventDetails } from '../constants/mockEvents';
 import Menu from '../components/Menu';
 import UserAvatar from '../components/UserAvatar';
 import { useSubscriptions } from '../contexts/SubscriptionsContext';
+import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../services/firebase';
+import { getTrailById, cancelTrailSubscription } from '../services/trailService';
 
 export default function DetalhesEvento({ navigation, route }) {
   // Parâmetros passados via rota
@@ -36,7 +39,7 @@ export default function DetalhesEvento({ navigation, route }) {
 
   // Carrega os dados da trilha
   const [event, setEvent] = useState(() => getEventDetails(eventId, initialItem));
-
+  const { user } = useAuth();
   const { isSubscribed: checkIsSubscribed, cancelSubscription: removeSubscription } = useSubscriptions();
 
   // Estados funcionais da tela
@@ -109,6 +112,56 @@ export default function DetalhesEvento({ navigation, route }) {
     }
   }, [eventId, event?.id, routeParams.justSubscribed, routeParams.ticketCount, checkIsSubscribed]);
 
+  // Busca dados atualizados da trilha no Cloud Firestore
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchFromFirestore() {
+      if (!eventId) return;
+      try {
+        const fetched = await getTrailById(eventId);
+        if (fetched && isMounted) {
+          const total = fetched.capacity || fetched.totalSpots || 12;
+          const filled = fetched.filledSpots || 0;
+          const spotsLeft = Math.max(0, total - filled);
+
+          setEvent((prev) => ({
+            ...prev,
+            ...fetched,
+            title: fetched.title || fetched.name || prev.title,
+            description: fetched.description || prev.description,
+            departureLocation: fetched.departureLocation || prev.departureLocation,
+            date: fetched.date || prev.date,
+            departureTime: fetched.departureTime || prev.departureTime,
+            duration: fetched.duration || fetched.time || prev.duration,
+            distance: fetched.distance || prev.distance,
+            difficulty: fetched.difficulty || prev.difficulty,
+            price: typeof fetched.price === 'number'
+              ? fetched.price
+              : (parseFloat(String(fetched.price || '10').replace('R$', '').replace(',', '.')) || prev.price),
+            totalSpots: total,
+            remainingSpots: spotsLeft,
+            guide: {
+              id: fetched.guideId || prev.guide?.id,
+              name: fetched.guideName || fetched.author || prev.guide?.name,
+              role: fetched.guideRole || prev.guide?.role || 'Guia profissional',
+              avatar: fetched.guideAvatar || prev.guide?.avatar,
+            },
+            coverImage: fetched.imageUrl
+              ? { uri: fetched.imageUrl }
+              : (fetched.image || prev.coverImage),
+          }));
+          setRemainingSpots(spotsLeft);
+        }
+      } catch (err) {
+        console.warn('Aviso ao carregar detalhes do Firestore:', err?.message);
+      }
+    }
+    fetchFromFirestore();
+    return () => {
+      isMounted = false;
+    };
+  }, [eventId]);
+
   // Trata botão voltar do dispositivo
   useEffect(() => {
     const onBackPress = () => {
@@ -162,23 +215,44 @@ export default function DetalhesEvento({ navigation, route }) {
     });
   };
 
-  // Confirmar cancelamento da participação
-  const handleConfirmCancellation = () => {
+  // Confirmar cancelamento da participação no Firestore e no app
+  const handleConfirmCancellation = async () => {
     setIsCancelling(true);
 
-    setTimeout(() => {
-      setIsCancelling(false);
-      setShowCancelModal(false);
-      setIsSubscribed(false);
+    try {
+      const trailId = event.id || eventId;
+      const currentUserId = auth.currentUser?.uid || user?.uid;
+
+      if (trailId && currentUserId) {
+        await cancelTrailSubscription(trailId, currentUserId, ticketCount);
+      }
+
       removeSubscription(event.id);
       removeSubscription(eventId);
+      setIsSubscribed(false);
+      setShowCancelModal(false);
       setRemainingSpots((prev) => prev + ticketCount);
 
       Alert.alert(
         'Inscrição Cancelada',
         'Sua participação foi cancelada com sucesso. O valor pago será estornado em até 3 dias úteis.'
       );
-    }, 600);
+    } catch (err) {
+      console.warn('Erro ao cancelar participação no Firestore:', err?.message);
+      // Garante desinscrição na interface
+      removeSubscription(event.id);
+      removeSubscription(eventId);
+      setIsSubscribed(false);
+      setShowCancelModal(false);
+      setRemainingSpots((prev) => prev + ticketCount);
+
+      Alert.alert(
+        'Inscrição Cancelada',
+        'Sua participação foi cancelada com sucesso. O valor pago será estornado em até 3 dias úteis.'
+      );
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   // Envio de nova pergunta no quadro

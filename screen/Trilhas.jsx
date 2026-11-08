@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { getAuth } from 'firebase/auth';
 import { colors } from '../constants/colors';
@@ -31,6 +32,7 @@ export default function Trilhas({ navigation }) {
   const [savedTrails, setSavedTrails] = useState({}); // Mapeamento { [trailId]: true/false }
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Obtém a instância e UID do usuário autenticado
   const auth = getAuth();
@@ -43,55 +45,71 @@ export default function Trilhas({ navigation }) {
   });
 
   // Busca as trilhas ativas e os IDs favoritados pelo usuário do Firestore
-  useEffect(() => {
-    let isMounted = true;
+  const loadData = useCallback(async (isPullToRefresh = false) => {
+    if (!isPullToRefresh) setLoading(true);
 
-    async function loadData() {
-      try {
-        setLoading(true);
+    try {
+      // Executa busca paralela das trilhas ativas e dos IDs salvos
+      const [firestoreTrails, savedIds] = await Promise.all([
+        getActiveTrails(),
+        userId ? getUserSavedTrailIds(userId) : Promise.resolve([]),
+      ]);
 
-        // Executa busca paralela das trilhas ativas e dos IDs salvos
-        const [firestoreTrails, savedIds] = await Promise.all([
-          getActiveTrails(),
-          userId ? getUserSavedTrailIds(userId) : Promise.resolve([]),
-        ]);
+      // Converte a lista de IDs de favoritos em um mapa para leitura rápida
+      const savedMap = (savedIds || []).reduce((acc, id) => {
+        acc[id] = true;
+        return acc;
+      }, {});
+      setSavedTrails(savedMap);
 
-        if (isMounted) {
-          // Converte a lista de IDs de favoritos em um mapa para leitura rápida
-          const savedMap = (savedIds || []).reduce((acc, id) => {
-            acc[id] = true;
-            return acc;
-          }, {});
-          setSavedTrails(savedMap);
+      // Separa as trilhas por nível de dificuldade
+      if (firestoreTrails) {
+        const facil = [];
+        const medio = [];
+        const dificil = [];
 
-          // Separa as trilhas por nível de dificuldade
-          if (firestoreTrails) {
-            const facil = firestoreTrails.filter((t) =>
-              t.difficulty?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('facil')
-            );
-            const medio = firestoreTrails.filter((t) =>
-              t.difficulty?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('medio')
-            );
-            const dificil = firestoreTrails.filter((t) =>
-              t.difficulty?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('dificil')
-            );
+        firestoreTrails.forEach((t) => {
+          const diff = (t.difficulty || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
 
-            setTrailsData({ facil, medio, dificil });
+          if (diff.includes('dificil')) {
+            dificil.push(t);
+          } else if (diff.includes('medio')) {
+            medio.push(t);
+          } else {
+            // Padrão Fácil para garantir que todas as trilhas criadas apareçam
+            facil.push(t);
           }
-        }
-      } catch (err) {
-        console.error('Erro ao carregar dados do Firestore:', err?.message);
-      } finally {
-        if (isMounted) setLoading(false);
+        });
+
+        setTrailsData({ facil, medio, dificil });
       }
+    } catch (err) {
+      console.error('Erro ao carregar dados do Firestore:', err?.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-
-    loadData();
-
-    return () => {
-      isMounted = false;
-    };
   }, [userId]);
+
+  // Recarrega sempre que a tela ganha foco (ex: volta após cadastro pelo guia)
+  useEffect(() => {
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      loadData(true);
+    });
+    return unsubscribe;
+  }, [navigation, loadData]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadData(true);
+  }, [loadData]);
 
   // Função para favoritar/desfavoritar com persistência no Firestore
   const toggleSave = async (id) => {
@@ -173,7 +191,17 @@ export default function Trilhas({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primary || '#2e7d32']}
+          />
+        }
+      >
         <HeaderWithBell onBellPress={() => navigation?.navigate('Notificacoes')} />
 
         <SearchBar

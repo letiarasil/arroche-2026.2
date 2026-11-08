@@ -49,6 +49,7 @@ export const getAllGuides = async () => {
 
 /**
  * Buscar perfil do guia pelo UID do usuário ou ID do documento
+ * Possui fallback para os dados de usuário na coleção 'users'
  */
 export const getGuideProfile = async (userId) => {
   if (!userId) return null;
@@ -58,6 +59,28 @@ export const getGuideProfile = async (userId) => {
   if (snap.exists()) {
     return normalizeGuideData(snap.id, snap.data());
   }
+
+  // Fallback: se o perfil na coleção 'guides' ainda não foi criado, recupera do 'users'
+  try {
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      const defaultGuide = {
+        name: userData.name || 'Guia Arroche',
+        displayName: userData.name || 'Guia',
+        role: 'Guia Profissional',
+        specialties: 'Trilhas • Ecoturismo • Turismo de Aventura',
+        bioPrefix: 'Guia cadastrado no aplicativo Arroche, ',
+        bioHighlight: 'atuando nas principais trilhas da região',
+        bioSuffix: ' com foco em segurança, preservação e aventura.',
+        trailsCount: 0,
+        ratingAverage: 5.0,
+      };
+      return normalizeGuideData(userId, defaultGuide);
+    }
+  } catch (_e) {}
+
   return null;
 };
 

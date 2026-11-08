@@ -28,7 +28,7 @@ export function AuthProvider({ children }) {
         try {
           const profile = await getUserProfile(currentUser.uid);
           setUserProfile(profile);
-          if (profile?.role === 'guide') {
+          if (profile?.role === 'guide' || profile?.profileType === 'guia') {
             try {
               const guideData = await getGuideProfile(currentUser.uid);
               setGuideProfile(guideData);
@@ -47,6 +47,7 @@ export function AuthProvider({ children }) {
       } else {
         setUser(null);
         setUserProfile(null);
+        setGuideProfile(null);
         setIsLoggedIn(false);
       }
       setLoading(false);
@@ -79,6 +80,10 @@ export function AuthProvider({ children }) {
           ...additionalData,
         });
         setUserProfile(profileData);
+        if (role === 'guide' || additionalData.profileType === 'guia') {
+          const gData = await getGuideProfile(currentUser.uid);
+          setGuideProfile(gData);
+        }
       } catch (firestoreError) {
         console.warn('Erro ao salvar perfil no Firestore:', firestoreError?.message);
         const fallbackProfile = {
@@ -96,6 +101,7 @@ export function AuthProvider({ children }) {
         email,
         password,
         name,
+        role,
         ...additionalData,
       };
 
@@ -107,6 +113,7 @@ export function AuthProvider({ children }) {
         email,
         password,
         name,
+        role,
         ...additionalData,
       };
       throw authError;
@@ -118,13 +125,28 @@ export function AuthProvider({ children }) {
     setIsRegistrationPending(false);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     setUser(userCredential.user);
+    try {
+      const profile = await getUserProfile(userCredential.user.uid);
+      setUserProfile(profile);
+      if (profile?.role === 'guide' || profile?.profileType === 'guia') {
+        const guideData = await getGuideProfile(userCredential.user.uid);
+        setGuideProfile(guideData);
+      }
+    } catch (_e) {}
     setIsLoggedIn(true);
     return userCredential.user;
   };
 
-  // Conclui o cadastro a partir da tela AccountCreated ("Entrar no app") e direciona para Trilhas
-  const enterApp = useCallback(() => {
+  // Conclui o cadastro a partir da tela AccountCreated ("Entrar no app")
+  const enterApp = useCallback((explicitProfileType = null) => {
     setIsRegistrationPending(false);
+    if (explicitProfileType === 'guia') {
+      setUserProfile((prev) => ({
+        ...prev,
+        role: 'guide',
+        profileType: 'guia',
+      }));
+    }
     setIsLoggedIn(true);
   }, []);
 
@@ -146,19 +168,29 @@ export function AuthProvider({ children }) {
     }
     setUser(null);
     setUserProfile(null);
+    setGuideProfile(null);
     setIsLoggedIn(false);
     setIsRegistrationPending(false);
   };
 
   const logout = logOut;
 
+  const isGuide = Boolean(
+    userProfile?.role === 'guide' ||
+    userProfile?.profileType === 'guia' ||
+    guideProfile !== null ||
+    mockDatabase.registeredUser?.profileType === 'guia'
+  );
+
   return (
     <AuthContext.Provider
       value={{
         isLoggedIn,
         signed: isLoggedIn,
+        isGuide,
         user,
         userProfile,
+        guideProfile,
         loading,
         signUp,
         signIn,

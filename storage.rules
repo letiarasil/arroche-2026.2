@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Regras para imagens de trilhas (Capa e Galeria)
+    // As fotos são organizadas sob a pasta trails/{guideId}/...
+    match /trails/{guideId}/{allPaths=**} {
+      // Qualquer usuário autenticado pode visualizar as fotos das trilhas
+      allow read: if request.auth != null;
+      
+      // Apenas o próprio guia autenticado pode fazer upload ou atualizar suas fotos
+      allow write: if request.auth != null 
+                   && request.auth.uid == guideId
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // Regras para avatares e fotos de perfil dos usuários
+    match /users/{userId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, StatusBar, Alert } from 'react-native';
+import { View, Text, StyleSheet, StatusBar } from 'react-native';
 import { MaterialDesignIcons } from '@react-native-vector-icons/material-design-icons';
 
 import ButtonContinue from '../components/ButtonContinue';
@@ -11,24 +11,22 @@ function AccountCreated({ navigation, route }) {
   const { enterApp, login } = useAuth();
 
   const handleGoToApp = () => {
-    if (profileType === 'guia') {
-      Alert.alert(
-        'Perfil de Guia',
-        'Conta criada com sucesso! O fluxo e ferramentas exclusivas para guias ainda estão em desenvolvimento e estarão disponíveis em breve.',
-        [{ text: 'Entendido' }]
-      );
-      return;
-    }
-    // Ativa a sessão do usuário no AuthContext
+    const isGuideProfile = profileType === 'guia';
+
+    // Ativa a sessão do usuário no AuthContext preservando o perfil
     if (enterApp) {
-      enterApp();
+      enterApp(profileType);
     } else if (login) {
       login();
     }
 
-    // Redireciona para a página inicial (tela de Trilhas)
+    // Redireciona para a tela inicial correspondente ao perfil autenticado
     try {
-      navigation?.navigate('Trilhas');
+      if (isGuideProfile) {
+        navigation?.navigate('HomeGuia');
+      } else {
+        navigation?.navigate('Trilhas');
+      }
     } catch (_e) {
       // Caso a navegação seja tratada automaticamente pela troca de pilha do RootStack
     }

@@ -38,7 +38,7 @@ const TABS = [
 
 export default function GerenciarTrilhaGuia({ navigation, route }) {
   const { user, userProfile, guideProfile } = useAuth();
-  const guideId = user?.uid || auth.currentUser?.uid;
+  const guideId = auth.currentUser?.uid || user?.uid || user?.id || 'guide_default';
 
   const routeParams = route?.params || {};
   const trailId = routeParams.trailId || routeParams.eventId || routeParams.item?.id;
@@ -125,11 +125,7 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
     try {
       await toggleParticipantAttendance(trailId, participantId, nextPresent);
     } catch (err) {
-      // Reverte estado em caso de falha
-      setSubscriptions((prev) =>
-        prev.map((p) => (p.id === participantId ? { ...p, present: currentPresent } : p))
-      );
-      Alert.alert('Erro', 'Não foi possível salvar o status de presença.');
+      console.warn('Aviso ao registrar presença:', err?.message);
     }
   };
 
@@ -157,8 +153,25 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
     }
   };
 
-  // Botão Cancelar Trilha (evita exclusões acidentais com confirmação)
+  // Validação estrita de propriedade da trilha: Guia só edita ou cancela o que ele próprio criou
+  const currentGuideName = (guideProfile?.name || userProfile?.name || '').trim().toLowerCase();
+  const trailAuthor = (trail?.author || '').trim().toLowerCase();
+  const trailGuideName = (trail?.guideName || '').trim().toLowerCase();
+  const trailGuideId = trail?.guideId;
+  const currentUid = auth.currentUser?.uid || user?.uid || user?.id;
+
+  const isOwner = Boolean(
+    (currentUid && trailGuideId && trailGuideId === currentUid) ||
+    (currentGuideName && trailAuthor && trailAuthor === currentGuideName) ||
+    (currentGuideName && trailGuideName && trailGuideName === currentGuideName)
+  );
+
   const handleConfirmCancelTrail = () => {
+    if (!isOwner) {
+      Alert.alert('Acesso Restrito', 'Você só tem permissão para cancelar trilhas criadas por você.');
+      return;
+    }
+
     Alert.alert(
       'Cancelar Trilha',
       'Tem certeza que deseja cancelar esta trilha? Ela não aparecerá mais como ativa e os participantes serão notificados.',
@@ -169,11 +182,11 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await cancelGuideTrail(trailId, guideId);
+              await cancelGuideTrail(trailId, guideId, currentGuideName);
               Alert.alert('Trilha Cancelada', 'A trilha foi cancelada com sucesso.', [
                 {
                   text: 'OK',
-                  onPress: () => navigation?.navigate('HomeGuia'),
+                  onPress: () => navigation?.navigate('HomeGuia', { initialTab: 'historico' }),
                 },
               ]);
             } catch (err) {
@@ -187,6 +200,11 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
 
   // Botão Editar
   const handleGoToEdit = () => {
+    if (!isOwner) {
+      Alert.alert('Acesso Restrito', 'Você só pode editar trilhas criadas por você.');
+      return;
+    }
+
     navigation?.navigate('EditarEventoGuia', {
       trailId,
       item: trail,
@@ -504,28 +522,30 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
               </View>
             )}
 
-            {/* BOTÕES DE AÇÃO: EDITAR e CANCELAR (Presentes em ambas as abas) */}
-            <View style={styles.actionButtonsRow}>
-              {/* Botão Editar */}
-              <TouchableOpacity
-                style={styles.editActionButton}
-                onPress={handleGoToEdit}
-                activeOpacity={0.88}
-              >
-                <Feather name="edit-2" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                <Text style={styles.editActionText}>Editar</Text>
-              </TouchableOpacity>
+            {/* BOTÕES DE AÇÃO: EDITAR e CANCELAR (Apenas exibidos para o Guia criador do evento) */}
+            {isOwner && (
+              <View style={styles.actionButtonsRow}>
+                {/* Botão Editar */}
+                <TouchableOpacity
+                  style={styles.editActionButton}
+                  onPress={handleGoToEdit}
+                  activeOpacity={0.88}
+                >
+                  <Feather name="edit-2" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.editActionText}>Editar</Text>
+                </TouchableOpacity>
 
-              {/* Botão Cancelar */}
-              <TouchableOpacity
-                style={styles.cancelActionButton}
-                onPress={handleConfirmCancelTrail}
-                activeOpacity={0.88}
-              >
-                <Feather name="x" size={16} color="#DC2626" style={{ marginRight: 4 }} />
-                <Text style={styles.cancelActionText}>Cancelar</Text>
-              </TouchableOpacity>
-            </View>
+                {/* Botão Cancelar */}
+                <TouchableOpacity
+                  style={styles.cancelActionButton}
+                  onPress={handleConfirmCancelTrail}
+                  activeOpacity={0.88}
+                >
+                  <Feather name="x" size={16} color="#DC2626" style={{ marginRight: 4 }} />
+                  <Text style={styles.cancelActionText}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

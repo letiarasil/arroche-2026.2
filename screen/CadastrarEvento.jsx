@@ -24,13 +24,13 @@ import { uploadImageToStorage } from '../services/storageService';
 import MenuGuia from '../components/MenuGuia';
 
 export default function CadastrarEvento({ navigation }) {
-  const { user, userProfile, guideProfile, isGuide } = useAuth();
-  const guideUid = auth.currentUser?.uid || user?.uid;
+  const { user, userProfile, guideProfile, isGuide, loading: authLoading } = useAuth();
+  const guideUid = auth.currentUser?.uid || user?.uid || user?.id || 'guide_default';
   const guideName = guideProfile?.name || userProfile?.name || 'Guia profissional';
 
   // Proteção de rota e regra de negócio: apenas Guias podem cadastrar eventos
   useEffect(() => {
-    if (!isGuide) {
+    if (!authLoading && !isGuide) {
       Alert.alert(
         'Acesso Restrito',
         'Apenas guias credenciados têm permissão para acessar a área de criação de eventos.',
@@ -48,7 +48,7 @@ export default function CadastrarEvento({ navigation }) {
         ]
       );
     }
-  }, [isGuide, navigation]);
+  }, [authLoading, isGuide, navigation]);
 
   // Estados dos campos do formulário
   const [coverImageUri, setCoverImageUri] = useState(null);
@@ -174,25 +174,51 @@ export default function CadastrarEvento({ navigation }) {
     setPrice(formatted);
   };
 
-  // Digitação manual com máscara de Data (DD/MM/AAAA)
+  // Digitação manual com máscara de Data (DD/MM/AAAA) e limites de dia/mês
   const handleDateManualChange = (text) => {
-    const clean = text.replace(/\D/g, '').slice(0, 8);
-    let formatted = clean;
-    if (clean.length > 4) {
-      formatted = `${clean.slice(0, 2)}/${clean.slice(2, 4)}/${clean.slice(4)}`;
-    } else if (clean.length > 2) {
-      formatted = `${clean.slice(0, 2)}/${clean.slice(2)}`;
+    const digits = text.replace(/\D/g, '').slice(0, 8);
+    let day = digits.slice(0, 2);
+    let month = digits.slice(2, 4);
+    let year = digits.slice(4, 8);
+
+    if (day.length === 2) {
+      let dayNum = parseInt(day, 10);
+      if (dayNum > 31) day = '31';
+      if (dayNum === 0) day = '01';
     }
+
+    if (month.length === 2) {
+      let monthNum = parseInt(month, 10);
+      if (monthNum > 12) month = '12';
+      if (monthNum === 0) month = '01';
+    }
+
+    let formatted = day;
+    if (month.length > 0) formatted += `/${month}`;
+    if (year.length > 0) formatted += `/${year}`;
+
     setDate(formatted);
   };
 
-  // Digitação manual com máscara de Horário (HH:MM)
+  // Digitação manual com máscara de Horário (HH:MM) e limites de hora/minuto
   const handleTimeManualChange = (text) => {
-    const clean = text.replace(/\D/g, '').slice(0, 4);
-    let formatted = clean;
-    if (clean.length > 2) {
-      formatted = `${clean.slice(0, 2)}:${clean.slice(2)}`;
+    const digits = text.replace(/\D/g, '').slice(0, 4);
+    let hours = digits.slice(0, 2);
+    let mins = digits.slice(2, 4);
+
+    if (hours.length === 2) {
+      let hNum = parseInt(hours, 10);
+      if (hNum > 23) hours = '23';
     }
+
+    if (mins.length === 2) {
+      let mNum = parseInt(mins, 10);
+      if (mNum > 59) mins = '59';
+    }
+
+    let formatted = hours;
+    if (mins.length > 0) formatted += `:${mins}`;
+
     setDepartureTime(formatted);
   };
 
@@ -312,13 +338,41 @@ export default function CadastrarEvento({ navigation }) {
       return;
     }
 
-    if (!date.trim() || date.trim().length < 8) {
-      Alert.alert('Data Inválida', 'Informe uma data válida no formato DD/MM/AAAA.');
+    // Validação estrita de formato e valores de Data
+    const partsDate = date.trim().split('/');
+    if (partsDate.length !== 3) {
+      Alert.alert('Data Inválida', 'Informe uma data válida no formato dia/mês/ano (ex: 27/10/2026).');
+      return;
+    }
+    const dayVal = parseInt(partsDate[0], 10);
+    const monthVal = parseInt(partsDate[1], 10);
+    const yearVal = parseInt(partsDate[2], 10);
+    const daysInMonth = new Date(yearVal, monthVal, 0).getDate();
+
+    if (
+      isNaN(dayVal) || isNaN(monthVal) || isNaN(yearVal) ||
+      monthVal < 1 || monthVal > 12 ||
+      dayVal < 1 || dayVal > daysInMonth ||
+      yearVal < 2024 || yearVal > 2035
+    ) {
+      Alert.alert('Data Inválida', 'Por favor, informe uma data válida no formato dia/mês/ano.');
       return;
     }
 
-    if (!departureTime.trim()) {
-      Alert.alert('Horário Inválido', 'Informe o horário de saída no formato HH:MM.');
+    // Validação estrita de formato e valores de Horário
+    const partsTime = departureTime.trim().split(':');
+    if (partsTime.length !== 2) {
+      Alert.alert('Horário Inválido', 'Informe o horário de saída no formato HH:MM (ex: 07:30).');
+      return;
+    }
+    const hourVal = parseInt(partsTime[0], 10);
+    const minuteVal = parseInt(partsTime[1], 10);
+    if (
+      isNaN(hourVal) || isNaN(minuteVal) ||
+      hourVal < 0 || hourVal > 23 ||
+      minuteVal < 0 || minuteVal > 59
+    ) {
+      Alert.alert('Horário Inválido', 'Informe um horário válido entre 00:00 e 23:59.');
       return;
     }
 
@@ -334,10 +388,10 @@ export default function CadastrarEvento({ navigation }) {
     }
 
     setIsSaving(true);
-    setUploadProgressText('Enviando foto de capa para o Firebase Storage...');
+    setUploadProgressText('Processando foto de capa...');
 
     try {
-      // 3. Upload da Foto de Capa para o Firebase Storage
+      // 3. Upload da Foto de Capa para o Storage
       const coverTimestamp = Date.now();
       const coverStoragePath = `trails/${guideUid}/cover_${coverTimestamp}.jpg`;
       const coverDownloadUrl = await uploadImageToStorage(coverImageUri, coverStoragePath);
@@ -345,7 +399,7 @@ export default function CadastrarEvento({ navigation }) {
       // 4. Upload das Fotos Adicionais da Galeria para o Storage
       const galleryDownloadUrls = [];
       if (galleryUris.length > 0) {
-        setUploadProgressText(`Enviando ${galleryUris.length} fotos adicionais...`);
+        setUploadProgressText(`Processando fotos adicionais (${galleryUris.length})...`);
         for (let i = 0; i < galleryUris.length; i++) {
           const galleryStoragePath = `trails/${guideUid}/gallery_${coverTimestamp}_${i}.jpg`;
           const url = await uploadImageToStorage(galleryUris[i], galleryStoragePath);
@@ -354,7 +408,7 @@ export default function CadastrarEvento({ navigation }) {
       }
 
       // 5. Montagem dos dados formatados da trilha
-      setUploadProgressText('Salvando dados da trilha no Cloud Firestore...');
+      setUploadProgressText('Salvando dados da trilha...');
 
       // Formata duração composta (ex: 2h 30min ou 45 min)
       let formattedDuration = '';
@@ -371,7 +425,7 @@ export default function CadastrarEvento({ navigation }) {
       // Formata distância com unidade separada
       const formattedDistance = distanceKm ? `${distanceKm} km` : '1,5 km';
 
-      // 6. Persistência no Cloud Firestore associando ao UID do guia
+      // 6. Persistência dos dados da trilha
       await createGuideTrail(guideUid, {
         title: trailName.trim(),
         name: trailName.trim(),
@@ -397,15 +451,15 @@ export default function CadastrarEvento({ navigation }) {
         status: 'ativa',
       });
 
-      // 7. Notificação de sucesso e redirecionamento para a Home do Guia
+      // 7. Notificação de sucesso limpa e amigável
       Alert.alert(
         'Sucesso!',
-        'Sua trilha foi cadastrada com sucesso e as imagens foram salvas no Firebase Storage.',
+        'Sua trilha foi cadastrada com sucesso!',
         [
           {
             text: 'OK',
             onPress: () => {
-              navigation?.navigate('HomeGuia');
+              navigation?.navigate('HomeGuia', { initialTab: 'cadastradas' });
             },
           },
         ]
@@ -414,7 +468,7 @@ export default function CadastrarEvento({ navigation }) {
       console.error('Falha no cadastro do evento:', err);
       Alert.alert(
         'Erro ao Cadastrar',
-        err?.message || 'Ocorreu um erro ao salvar os dados no Firebase. Verifique sua conexão e tente novamente.'
+        err?.message || 'Ocorreu um erro ao salvar a trilha. Verifique sua conexão e tente novamente.'
       );
     } finally {
       setIsSaving(false);
@@ -422,12 +476,12 @@ export default function CadastrarEvento({ navigation }) {
     }
   };
 
-  if (!isGuide) {
+  if (authLoading || !isGuide) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={{ marginTop: 12, color: '#6B7280', fontSize: 14 }}>
-          Verificando permissões de guia...
+          Verificando permissões...
         </Text>
       </View>
     );

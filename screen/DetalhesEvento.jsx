@@ -295,6 +295,10 @@ export default function DetalhesEvento({ navigation, route }) {
   };
 
   const handleClose = () => {
+    if (routeParams.justSubscribed) {
+      navigation?.navigate('Trilhas');
+      return;
+    }
     if (navigation?.canGoBack()) {
       navigation.goBack();
     } else {

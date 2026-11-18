@@ -25,12 +25,13 @@ import { resolveTrailImage } from '../services/trailImages';
 import MenuGuia from '../components/MenuGuia';
 
 export default function EditarEventoGuia({ navigation, route }) {
-  const { user, isGuide } = useAuth();
-  const guideUid = auth.currentUser?.uid || user?.uid;
+  const { user, userProfile, guideProfile, isGuide, loading: authLoading } = useAuth();
+  const guideUid = auth.currentUser?.uid || user?.uid || user?.id || 'guide_default';
+  const guideName = guideProfile?.name || userProfile?.name || 'Guia profissional';
 
   // Proteção de rota e regra de negócio: apenas Guias podem editar eventos
   useEffect(() => {
-    if (!isGuide) {
+    if (!authLoading && !isGuide) {
       Alert.alert(
         'Acesso Restrito',
         'Apenas guias credenciados têm permissão para editar eventos.',
@@ -48,7 +49,7 @@ export default function EditarEventoGuia({ navigation, route }) {
         ]
       );
     }
-  }, [isGuide, navigation]);
+  }, [authLoading, isGuide, navigation]);
 
   const initialItem = route?.params?.item;
   const trailId = route?.params?.trailId || initialItem?.id;
@@ -73,13 +74,51 @@ export default function EditarEventoGuia({ navigation, route }) {
   const [isDateModalVisible, setIsDateModalVisible] = useState(false);
   const [isTimeModalVisible, setIsTimeModalVisible] = useState(false);
 
+  // Verificação estrita de propriedade da trilha (Guia só edita seus próprios eventos)
+  const checkOwnership = (itemData) => {
+    if (!itemData) return false;
+    const currentUid = auth.currentUser?.uid || user?.uid || user?.id;
+    const currentGuideName = (guideProfile?.name || userProfile?.name || '').trim().toLowerCase();
+    const trailGuideId = itemData.guideId;
+    const trailAuthor = (itemData.author || '').trim().toLowerCase();
+    const trailGuideName = (itemData.guideName || '').trim().toLowerCase();
+
+    const matchesUid = Boolean(currentUid && trailGuideId && trailGuideId === currentUid);
+    const matchesAuthor = Boolean(currentGuideName && trailAuthor && trailAuthor === currentGuideName);
+    const matchesGuideName = Boolean(currentGuideName && trailGuideName && trailGuideName === currentGuideName);
+
+    if (!matchesUid && !matchesAuthor && !matchesGuideName) {
+      Alert.alert(
+        'Permissão Negada',
+        'Você só tem permissão para editar eventos criados por você.',
+        [{ text: 'OK', onPress: () => navigation?.goBack() }]
+      );
+      return false;
+    }
+    return true;
+  };
+
   useEffect(() => {
     async function loadData() {
-      if (!initialItem && trailId) {
+      if (initialItem) {
+        if (!checkOwnership(initialItem)) return;
+        const rawImg = initialItem.imageUrl || 
+          (typeof initialItem.image === 'string' ? initialItem.image : initialItem.image?.uri) || 
+          initialItem.imageKey || 
+          initialItem.coverImage;
+        if (rawImg) {
+          setCoverImageUri(typeof rawImg === 'string' ? rawImg : rawImg?.uri);
+        }
+        return;
+      }
+
+      if (trailId) {
         setLoadingInitial(true);
         try {
           const fetched = await getTrailById(trailId);
           if (fetched) {
+            if (!checkOwnership(fetched)) return;
+
             setTrailName(fetched.title || fetched.name || '');
             setDescription(fetched.description || '');
             setDifficulty(fetched.difficulty || 'Fácil');
@@ -90,20 +129,22 @@ export default function EditarEventoGuia({ navigation, route }) {
             setDuration(fetched.duration || '');
             setCapacity(String(fetched.capacity || fetched.totalSpots || '12'));
             setPrice(String(fetched.price || '10.00'));
-            if (fetched.imageUrl) {
-              setCoverImageUri(fetched.imageUrl);
+            const fetchedImg = fetched.imageUrl || 
+              (typeof fetched.image === 'string' ? fetched.image : fetched.image?.uri) || 
+              fetched.imageKey || 
+              fetched.coverImage;
+            if (fetchedImg) {
+              setCoverImageUri(typeof fetchedImg === 'string' ? fetchedImg : fetchedImg?.uri);
             }
           }
         } catch (_e) {
         } finally {
           setLoadingInitial(false);
         }
-      } else if (initialItem?.imageUrl) {
-        setCoverImageUri(initialItem.imageUrl);
       }
     }
     loadData();
-  }, [trailId, initialItem]);
+  }, [trailId, initialItem, guideUid, guideName]);
 
   const handlePickCoverImage = async () => {
     try {
@@ -128,17 +169,106 @@ export default function EditarEventoGuia({ navigation, route }) {
     }
   };
 
+  // Digitação manual com máscara de Data (DD/MM/AAAA) e limites de dia/mês
+  const handleDateManualChange = (text) => {
+    const digits = text.replace(/\D/g, '').slice(0, 8);
+    let day = digits.slice(0, 2);
+    let month = digits.slice(2, 4);
+    let year = digits.slice(4, 8);
+
+    if (day.length === 2) {
+      let dayNum = parseInt(day, 10);
+      if (dayNum > 31) day = '31';
+      if (dayNum === 0) day = '01';
+    }
+
+    if (month.length === 2) {
+      let monthNum = parseInt(month, 10);
+      if (monthNum > 12) month = '12';
+      if (monthNum === 0) month = '01';
+    }
+
+    let formatted = day;
+    if (month.length > 0) formatted += `/${month}`;
+    if (year.length > 0) formatted += `/${year}`;
+
+    setDate(formatted);
+  };
+
+  // Digitação manual com máscara de Horário (HH:MM) e limites de hora/minuto
+  const handleTimeManualChange = (text) => {
+    const digits = text.replace(/\D/g, '').slice(0, 4);
+    let hours = digits.slice(0, 2);
+    let mins = digits.slice(2, 4);
+
+    if (hours.length === 2) {
+      let hNum = parseInt(hours, 10);
+      if (hNum > 23) hours = '23';
+    }
+
+    if (mins.length === 2) {
+      let mNum = parseInt(mins, 10);
+      if (mNum > 59) mins = '59';
+    }
+
+    let formatted = hours;
+    if (mins.length > 0) formatted += `:${mins}`;
+
+    setDepartureTime(formatted);
+  };
+
   const handleSalvarEdicao = async () => {
     if (!trailName.trim()) {
       Alert.alert('Campo Obrigatório', 'Informe o nome da trilha.');
       return;
     }
 
+    // Validação estrita de Data
+    const partsDate = date.trim().split('/');
+    if (partsDate.length !== 3) {
+      Alert.alert('Data Inválida', 'Informe uma data válida no formato dia/mês/ano (ex: 27/10/2026).');
+      return;
+    }
+    const dayVal = parseInt(partsDate[0], 10);
+    const monthVal = parseInt(partsDate[1], 10);
+    const yearVal = parseInt(partsDate[2], 10);
+    const daysInMonth = new Date(yearVal, monthVal, 0).getDate();
+
+    if (
+      isNaN(dayVal) || isNaN(monthVal) || isNaN(yearVal) ||
+      monthVal < 1 || monthVal > 12 ||
+      dayVal < 1 || dayVal > daysInMonth ||
+      yearVal < 2024 || yearVal > 2035
+    ) {
+      Alert.alert('Data Inválida', 'Por favor, informe uma data válida no formato dia/mês/ano.');
+      return;
+    }
+
+    // Validação estrita de Horário
+    const partsTime = departureTime.trim().split(':');
+    if (partsTime.length !== 2) {
+      Alert.alert('Horário Inválido', 'Informe o horário de saída no formato HH:MM (ex: 07:30).');
+      return;
+    }
+    const hourVal = parseInt(partsTime[0], 10);
+    const minuteVal = parseInt(partsTime[1], 10);
+    if (
+      isNaN(hourVal) || isNaN(minuteVal) ||
+      hourVal < 0 || hourVal > 23 ||
+      minuteVal < 0 || minuteVal > 59
+    ) {
+      Alert.alert('Horário Inválido', 'Informe um horário válido entre 00:00 e 23:59.');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      let finalImageUrl = coverImageUri;
+      let finalImageUrl = coverImageUri || initialItem?.imageUrl || initialItem?.imageKey;
+      if (!finalImageUrl && initialItem?.image) {
+        finalImageUrl = typeof initialItem.image === 'string' ? initialItem.image : initialItem.image?.uri;
+      }
 
-      // Se a imagem for um arquivo local novo do dispositivo, faz o upload para o Storage
+      // Se a imagem for um arquivo local novo do dispositivo, faz o upload seguro para o Storage
       if (coverImageUri && !coverImageUri.startsWith('http://') && !coverImageUri.startsWith('https://')) {
         const coverPath = `trails/${guideUid}/cover_${Date.now()}.jpg`;
         finalImageUrl = await uploadImageToStorage(coverImageUri, coverPath);
@@ -161,6 +291,7 @@ export default function EditarEventoGuia({ navigation, route }) {
         totalSpots: parseInt(capacity.replace(/\D/g, ''), 10) || 12,
         price: parseFloat(price.replace('R$', '').replace(',', '.').trim()) || 0.0,
         imageUrl: finalImageUrl,
+        guideName,
       });
 
       Alert.alert('Sucesso', 'Informações da trilha atualizadas com sucesso!', [
@@ -170,7 +301,7 @@ export default function EditarEventoGuia({ navigation, route }) {
             if (navigation?.canGoBack()) {
               navigation.goBack();
             } else {
-              navigation.navigate('HomeGuia');
+              navigation.navigate('HomeGuia', { initialTab: 'cadastradas' });
             }
           },
         },
@@ -183,12 +314,12 @@ export default function EditarEventoGuia({ navigation, route }) {
     }
   };
 
-  if (!isGuide) {
+  if (authLoading || !isGuide) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={{ marginTop: 12, color: '#6B7280', fontSize: 14 }}>
-          Verificando permissões de guia...
+          Verificando permissões...
         </Text>
       </View>
     );
@@ -325,17 +456,9 @@ export default function EditarEventoGuia({ navigation, route }) {
                 placeholder="DD/MM/AAAA"
                 placeholderTextColor="#9CA3AF"
                 value={date}
-                onChangeText={(text) => {
-                  const clean = text.replace(/\D/g, '').slice(0, 8);
-                  let formatted = clean;
-                  if (clean.length > 4) {
-                    formatted = `${clean.slice(0, 2)}/${clean.slice(2, 4)}/${clean.slice(4)}`;
-                  } else if (clean.length > 2) {
-                    formatted = `${clean.slice(0, 2)}/${clean.slice(2)}`;
-                  }
-                  setDate(formatted);
-                }}
+                onChangeText={handleDateManualChange}
                 keyboardType="numeric"
+                maxLength={10}
               />
             </View>
 
@@ -346,15 +469,9 @@ export default function EditarEventoGuia({ navigation, route }) {
                 placeholder="00:00"
                 placeholderTextColor="#9CA3AF"
                 value={departureTime}
-                onChangeText={(text) => {
-                  const clean = text.replace(/\D/g, '').slice(0, 4);
-                  let formatted = clean;
-                  if (clean.length > 2) {
-                    formatted = `${clean.slice(0, 2)}:${clean.slice(2)}`;
-                  }
-                  setDepartureTime(formatted);
-                }}
+                onChangeText={handleTimeManualChange}
                 keyboardType="numeric"
+                maxLength={5}
               />
             </View>
           </View>

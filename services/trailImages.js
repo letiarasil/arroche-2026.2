@@ -1,10 +1,22 @@
 // Mapeamento centralizado de imagens de trilhas para suportar tanto referências do banco quanto assets locais
+let lemosAsset = { uri: 'https://images.unsplash.com/photo-1551632811-561732d1e306' };
+let cruzeiroAsset = { uri: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b' };
+let valeAsset = { uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb' };
+let bruxaAsset = { uri: 'https://images.unsplash.com/photo-1519681393784-d120267933ba' };
+
+try {
+  lemosAsset = require('../assets/trilhas/lemos.jpg');
+  cruzeiroAsset = require('../assets/trilhas/pedra-cruzeiro.jpg');
+  valeAsset = require('../assets/trilhas/vale-perdido.jpg');
+  bruxaAsset = require('../assets/trilhas/cabeca-bruxa.jpg');
+} catch (_e) {}
+
 export const TRAIL_IMAGES = {
-  lemos: require('../assets/trilhas/lemos.jpg'),
-  'pedra-cruzeiro': require('../assets/trilhas/pedra-cruzeiro.jpg'),
-  'vale-perdido': require('../assets/trilhas/vale-perdido.jpg'),
-  'cabeca-bruxa': require('../assets/trilhas/cabeca-bruxa.jpg'),
-  default: require('../assets/trilhas/lemos.jpg'),
+  lemos: lemosAsset,
+  'pedra-cruzeiro': cruzeiroAsset,
+  'vale-perdido': valeAsset,
+  'cabeca-bruxa': bruxaAsset,
+  default: lemosAsset,
 };
 
 /**
@@ -17,19 +29,31 @@ export const TRAIL_IMAGES = {
 export function resolveTrailImage(img) {
   if (!img) return TRAIL_IMAGES.default;
 
-  // Se já for require local
+  // Se já for require local (number) ou objeto com uri
   if (typeof img === 'number' || (typeof img === 'object' && img.uri)) {
     return img;
   }
 
-  // Se for URL web
-  if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
-    return { uri: img };
-  }
-
-  // Se for chave conhecida
   if (typeof img === 'string') {
-    const cleanKey = img.toLowerCase().replace('.jpg', '').replace('.png', '').trim();
+    const trimmed = img.trim();
+    if (!trimmed) return TRAIL_IMAGES.default;
+
+    // Se for URL web, file URI, content URI, base64 data URI ou caminho com barras
+    if (
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('https://') ||
+      trimmed.startsWith('file:') ||
+      trimmed.startsWith('content:') ||
+      trimmed.startsWith('ph:') ||
+      trimmed.startsWith('data:') ||
+      trimmed.startsWith('/') ||
+      trimmed.includes('/') ||
+      trimmed.includes('\\')
+    ) {
+      return { uri: trimmed };
+    }
+
+    const cleanKey = trimmed.toLowerCase().replace('.jpg', '').replace('.png', '').trim();
     if (TRAIL_IMAGES[cleanKey]) {
       return TRAIL_IMAGES[cleanKey];
     }

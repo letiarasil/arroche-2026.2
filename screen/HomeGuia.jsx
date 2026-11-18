@@ -32,11 +32,11 @@ const TABS = [
 ];
 
 export default function HomeGuia({ navigation, route }) {
-  const { user, userProfile, guideProfile, isGuide } = useAuth();
+  const { user, userProfile, guideProfile, isGuide, loading: authLoading } = useAuth();
 
-  // Proteção de rota para guias
+  // Proteção de rota para guias (aguarda auth terminar de carregar)
   useEffect(() => {
-    if (!isGuide) {
+    if (!authLoading && !isGuide) {
       Alert.alert(
         'Acesso Restrito',
         'Esta área é exclusiva para guias credenciados.',
@@ -54,10 +54,10 @@ export default function HomeGuia({ navigation, route }) {
         ]
       );
     }
-  }, [isGuide, navigation]);
+  }, [authLoading, isGuide, navigation]);
 
   // Identificação do guia autenticado real
-  const guideId = auth.currentUser?.uid || user?.uid;
+  const guideId = auth.currentUser?.uid || user?.uid || user?.id || 'guide_default';
   const guideName =
     guideProfile?.name ||
     userProfile?.name ||
@@ -66,6 +66,12 @@ export default function HomeGuia({ navigation, route }) {
   // Estados principais
   const initialTab = route?.params?.initialTab || 'cadastradas';
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    if (route?.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+    }
+  }, [route?.params?.initialTab]);
   const [searchQuery, setSearchQuery] = useState('');
   const [trails, setTrails] = useState([]);
   const [historyTrails, setHistoryTrails] = useState([]);
@@ -164,7 +170,7 @@ export default function HomeGuia({ navigation, route }) {
     navigation?.navigate('CadastrarEvento');
   };
 
-  if (!isGuide) {
+  if (authLoading || !isGuide) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.primary} />

@@ -4,10 +4,17 @@ import { Feather } from '@expo/vector-icons';
 import { Mountain } from 'lucide-react-native';
 import { colors } from '../constants/colors';
 import { VazadoIcon } from './icons/VazadoIcon';
+import { useAuth } from '../contexts/AuthContext';
 
 const Menu = ({ activeTab, navigation }) => {
+  const { isGuide } = useAuth();
+
   const tabs = [
-    { name: 'Trilhas', route: 'Trilhas', iconType: 'LucideMountain' },
+    { 
+      name: 'Trilhas', 
+      route: isGuide ? 'HomeGuia' : 'Trilhas', 
+      iconType: 'LucideMountain' 
+    },
     { name: 'Guias', route: 'Guias', iconType: 'Vazado' },
     { name: 'Salvos', route: 'Salvos', iconType: 'Feather', iconName: 'bookmark' },
     { name: 'Perfil', route: 'Perfil', iconType: 'Feather', iconName: 'user' },

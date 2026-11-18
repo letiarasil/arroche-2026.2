@@ -32,8 +32,8 @@ export default function MenuGuia({ activeTab = 'Trilhas', navigation }) {
   ];
 
   const handleTabPress = (tab) => {
-    if (tab.route === 'HomeGuia') {
-      navigation?.navigate('HomeGuia');
+    if (tab.route === 'HomeGuia' || tab.name === 'Trilhas') {
+      navigation?.navigate('HomeGuia', { initialTab: 'cadastradas' });
     } else if (tab.route === 'Perfil') {
       navigation?.navigate('Perfil');
     } else if (tab.name === 'Pagamentos') {

@@ -1,0 +1,399 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file defines and protects the following data structures:
+//
+// Collection: /users/{userId}
+// Document ID: Firebase Auth UID of the user
+// Fields:
+//   - name: string (optional, 1-150 chars)
+//   - email: string (optional, 1-150 chars)
+//   - role: string (optional, e.g. 'hiker', 'guide', 'trilheiro', 'guia')
+//   - profileType: string (optional, e.g. 'trilheiro', 'guia')
+//   - phone: string (optional, max 50 chars)
+//   - avatarUrl: string or null (optional, max 2000 chars)
+//   - savedTrails: list of string IDs (optional, max 500 items)
+//   - createdAt: timestamp or ISO string (immutable on update)
+//   - updatedAt: timestamp or ISO string
+//
+// Collection: /trails/{trailId}
+// Document ID: Auto-generated string or slug
+// Fields:
+//   - guideId: string (required, must match creator's request.auth.uid, immutable)
+//   - guideName: string (optional, max 150 chars)
+//   - author: string (optional, max 150 chars)
+//   - title: string (required on create, 1-200 chars)
+//   - name: string (optional, 1-200 chars)
+//   - description: string (optional, max 5000 chars)
+//   - difficulty: string (optional, max 50 chars)
+//   - departureLocation: string (optional, max 300 chars)
+//   - date: string (optional, max 100 chars)
+//   - departureTime: string (optional, max 100 chars)
+//   - distance: string (optional, max 100 chars)
+//   - duration: string (optional, max 100 chars)
+//   - time: string (optional, max 100 chars)
+//   - capacity: number (optional, >= 0)
+//   - totalSpots: number (optional, >= 0)
+//   - remainingSpots: number (optional, >= 0)
+//   - filledSpots: number (optional, >= 0)
+//   - price: number (optional, >= 0)
+//   - formattedPrice: string (optional, max 100 chars)
+//   - imageUrl: string or null (optional, max 2000 chars)
+//   - imageKey: string or null (optional, max 200 chars)
+//   - image: string or null (optional, max 2000 chars)
+//   - coverImage: string or null (optional, max 2000 chars)
+//   - coverImageKey: string or null (optional, max 200 chars)
+//   - galleryUrls: list of strings (optional, max 50 items)
+//   - isActive: bool (optional)
+//   - status: string (optional, 'ativa' | 'cancelada' | 'concluida' | 'pendente')
+//   - rating: number (optional)
+//   - reviews: number (optional)
+//   - createdAt: timestamp or ISO string (immutable on update)
+//   - updatedAt: timestamp or ISO string
+//
+// Subcollection: /trails/{trailId}/subscriptions/{subscriptionId}
+// Document ID: Auto-generated subscription ID
+// Fields:
+//   - userId: string (required, matches subscriber's auth UID, immutable)
+//   - name: string (optional, max 150 chars)
+//   - email: string (optional, max 150 chars)
+//   - avatar: string or null (optional, max 2000 chars)
+//   - ticketCount: number (optional, 1-100)
+//   - status: string (optional, 'confirmada' | 'cancelada' | 'pendente')
+//   - present: bool (optional, guide-controlled for attendance)
+//   - checkedAt: timestamp or null (optional, guide-controlled timestamp)
+//   - createdAt: timestamp or ISO string (immutable on update)
+//   - updatedAt: timestamp or ISO string
+//
+// Subcollection: /trails/{trailId}/questions/{questionId}
+// Document ID: Auto-generated question/bulletin ID
+// Fields:
+//   - userId: string (optional/required, matches author's auth UID, immutable)
+//   - userName: string (optional, max 150 chars)
+//   - userAvatar: string or null (optional, max 2000 chars)
+//   - text: string (required, 1-2000 chars)
+//   - createdAt: string or timestamp (optional)
+//   - timestamp: timestamp or string (optional)
+//
+// Subcollection: /trails/{trailId}/reviews/{reviewId}
+// Document ID: Auto-generated review ID
+// Fields:
+//   - userId: string (required, matches reviewer's auth UID, immutable)
+//   - userSummary: map (optional, contains name and avatarUrl)
+//   - rating: number (required, 1-5)
+//   - comment: string (optional, max 2000 chars)
+//   - createdAt: timestamp or ISO string (immutable on update)
+//
+// Collection: /guides/{userId}
+// Document ID: Firebase Auth UID of the guide
+// Fields:
+//   - name: string (optional, max 150 chars)
+//   - displayName: string (optional, max 150 chars)
+//   - phone: string (optional, max 50 chars)
+//   - cadasturNumber: string (optional, max 50 chars)
+//   - cadasturFormatted: string (optional, max 50 chars)
+//   - isVerified: bool (optional)
+//   - operatingCities: list (optional, max 50 items)
+//   - availableTrails: list (optional, max 100 items)
+//   - sharedPhotos: list (optional, max 100 items)
+//
+// Collection: /events/{eventId}
+// Legacy/auxiliary events catalog and subscriptions
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Global Helper Functions
+    // ===============================================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user owns the resource based on passed userId parameter
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Ensure specified immutable fields were not altered in an update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Check if the current user is the guide owner of the parent trail
+    function isTrailGuide(trailId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/trails/$(trailId)) &&
+        get(/databases/$(database)/documents/trails/$(trailId)).data.guideId == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    // Validates /users/{userId} document payload
+    function isValidUser(data) {
+      return (!('name' in data) || (data.name is string && data.name.size() <= 150)) &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+             (!('role' in data) || (data.role is string && data.role.size() <= 50)) &&
+             (!('profileType' in data) || (data.profileType is string && data.profileType.size() <= 50)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
+             (!('avatarUrl' in data) || data.avatarUrl == null || (data.avatarUrl is string && data.avatarUrl.size() <= 2000)) &&
+             (!('savedTrails' in data) || (data.savedTrails is list && data.savedTrails.size() <= 500)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || data.updatedAt is string);
+    }
+
+    // Validates /trails/{trailId} document payload
+    function isValidTrail(data) {
+      return (data.guideId is string && data.guideId.size() > 0 && data.guideId.size() <= 128) &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 200)) &&
+             (!('name' in data) || (data.name is string && data.name.size() <= 200)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 5000)) &&
+             (!('difficulty' in data) || (data.difficulty is string && data.difficulty.size() <= 50)) &&
+             (!('departureLocation' in data) || (data.departureLocation is string && data.departureLocation.size() <= 300)) &&
+             (!('date' in data) || (data.date is string && data.date.size() <= 100)) &&
+             (!('departureTime' in data) || (data.departureTime is string && data.departureTime.size() <= 100)) &&
+             (!('distance' in data) || (data.distance is string && data.distance.size() <= 100)) &&
+             (!('duration' in data) || (data.duration is string && data.duration.size() <= 100)) &&
+             (!('time' in data) || (data.time is string && data.time.size() <= 100)) &&
+             (!('capacity' in data) || (data.capacity is number && data.capacity >= 0)) &&
+             (!('totalSpots' in data) || (data.totalSpots is number && data.totalSpots >= 0)) &&
+             (!('remainingSpots' in data) || (data.remainingSpots is number && data.remainingSpots >= 0)) &&
+             (!('filledSpots' in data) || (data.filledSpots is number && data.filledSpots >= 0)) &&
+             (!('price' in data) || (data.price is number && data.price >= 0)) &&
+             (!('formattedPrice' in data) || (data.formattedPrice is string && data.formattedPrice.size() <= 100)) &&
+             (!('imageUrl' in data) || data.imageUrl == null || (data.imageUrl is string && data.imageUrl.size() <= 2000)) &&
+             (!('imageKey' in data) || data.imageKey == null || (data.imageKey is string && data.imageKey.size() <= 200)) &&
+             (!('image' in data) || data.image == null || (data.image is string && data.image.size() <= 2000)) &&
+             (!('coverImage' in data) || data.coverImage == null || (data.coverImage is string && data.coverImage.size() <= 2000)) &&
+             (!('coverImageKey' in data) || data.coverImageKey == null || (data.coverImageKey is string && data.coverImageKey.size() <= 200)) &&
+             (!('galleryUrls' in data) || (data.galleryUrls is list && data.galleryUrls.size() <= 50)) &&
+             (!('guideName' in data) || (data.guideName is string && data.guideName.size() <= 150)) &&
+             (!('author' in data) || (data.author is string && data.author.size() <= 150)) &&
+             (!('isActive' in data) || data.isActive is bool) &&
+             (!('status' in data) || (data.status is string && data.status in ['ativa', 'cancelada', 'concluida', 'pendente'])) &&
+             (!('rating' in data) || data.rating is number) &&
+             (!('reviews' in data) || data.reviews is number) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || data.updatedAt is string);
+    }
+
+    // Validates atomic booking spots update on a trail by a participant
+    function isValidBookingSpotUpdate() {
+      return isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['filledSpots', 'remainingSpots', 'updatedAt']) &&
+        (!('filledSpots' in request.resource.data) || (request.resource.data.filledSpots is number && request.resource.data.filledSpots >= 0)) &&
+        (!('remainingSpots' in request.resource.data) || (request.resource.data.remainingSpots is number && request.resource.data.remainingSpots >= 0));
+    }
+
+    // Validates /trails/{trailId}/subscriptions/{subscriptionId}
+    function isValidSubscription(data) {
+      return (data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128) &&
+             (!('name' in data) || (data.name is string && data.name.size() <= 150)) &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+             (!('avatar' in data) || data.avatar == null || (data.avatar is string && data.avatar.size() <= 2000)) &&
+             (!('ticketCount' in data) || (data.ticketCount is number && data.ticketCount >= 1 && data.ticketCount <= 100)) &&
+             (!('status' in data) || (data.status is string && data.status in ['confirmada', 'cancelada', 'pendente'])) &&
+             (!('present' in data) || data.present is bool) &&
+             (!('checkedAt' in data) || data.checkedAt == null || data.checkedAt is timestamp || data.checkedAt is string) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || data.updatedAt is string) &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128));
+    }
+
+    // Validates /trails/{trailId}/questions/{questionId}
+    function isValidQuestion(data) {
+      return (!('userId' in data) || (data.userId is string && data.userId.size() <= 128)) &&
+             (!('userName' in data) || (data.userName is string && data.userName.size() <= 150)) &&
+             (!('userAvatar' in data) || data.userAvatar == null || (data.userAvatar is string && data.userAvatar.size() <= 2000)) &&
+             ('text' in data && data.text is string && data.text.size() > 0 && data.text.size() <= 2000) &&
+             (!('createdAt' in data) || data.createdAt is string || data.createdAt is timestamp) &&
+             (!('timestamp' in data) || data.timestamp is timestamp || data.timestamp is string);
+    }
+
+    // Validates /trails/{trailId}/reviews/{reviewId}
+    function isValidReview(data) {
+      return (data.userId is string && data.userId.size() <= 128) &&
+             (data.rating is number && data.rating >= 1 && data.rating <= 5) &&
+             (!('comment' in data) || (data.comment is string && data.comment.size() <= 2000)) &&
+             (!('userSummary' in data) || (data.userSummary is map)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt is string);
+    }
+
+    // Validates /guides/{userId}
+    function isValidGuide(data) {
+      return (!('name' in data) || (data.name is string && data.name.size() <= 150)) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 150)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
+             (!('cadasturNumber' in data) || (data.cadasturNumber is string && data.cadasturNumber.size() <= 50)) &&
+             (!('cadasturFormatted' in data) || (data.cadasturFormatted is string && data.cadasturFormatted.size() <= 50)) &&
+             (!('isVerified' in data) || data.isVerified is bool) &&
+             (!('operatingCities' in data) || (data.operatingCities is list && data.operatingCities.size() <= 50)) &&
+             (!('availableTrails' in data) || (data.availableTrails is list && data.availableTrails.size() <= 100)) &&
+             (!('sharedPhotos' in data) || (data.sharedPhotos is list && data.sharedPhotos.size() <= 100)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || data.updatedAt is string);
+    }
+
+    // ===============================================================
+    // Rules per Collection
+    // ===============================================================
+
+    // 1. Users Collection
+    match /users/{userId} {
+      // Authenticated users can view user profiles
+      allow read: if isAuthenticated();
+
+      // Only the account owner can create their own profile document
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+
+      // Only the account owner can update their own profile, protecting createdAt
+      allow update: if isOwner(userId) &&
+                       isValidUser(request.resource.data) &&
+                       areImmutableFieldsUnchanged(['createdAt']);
+
+      // Prevent accidental profile deletion
+      allow delete: if false;
+    }
+
+    // 2. Guides Collection
+    match /guides/{userId} {
+      // Any authenticated user can view guide credentials and portfolio
+      allow read: if isAuthenticated();
+
+      // Only the verified guide can create or update their own profile
+      allow create, update: if isOwner(userId) && isValidGuide(request.resource.data);
+
+      allow delete: if false;
+    }
+
+    // 3. Trails Collection and Subcollections
+    match /trails/{trailId} {
+      // Public read for listing trails, discovery and trail details in the app
+      allow read: if true;
+
+      // Only authenticated users assigning themselves as guide can create trails
+      allow create: if isAuthenticated() &&
+                       request.resource.data.guideId == request.auth.uid &&
+                       isValidTrail(request.resource.data);
+
+      // Updates allowed either for:
+      // (a) Guide owner updating trail details (with guideId and createdAt immutable)
+      // (b) Authenticated users booking/canceling spots (modifying only filledSpots/remainingSpots)
+      allow update: if isAuthenticated() &&
+                       isValidTrail(request.resource.data) &&
+                       (
+                         (resource.data.guideId == request.auth.uid && areImmutableFieldsUnchanged(['guideId', 'createdAt'])) ||
+                         isValidBookingSpotUpdate()
+                       );
+
+      // Only the guide owner can delete or cancel their trail
+      allow delete: if isAuthenticated() && resource.data.guideId == request.auth.uid;
+
+      // -------------------------------------------------------------
+      // Subcollection: Subscriptions (Attendance & Registrations)
+      // -------------------------------------------------------------
+      match /subscriptions/{subscriptionId} {
+        // Readable by the enrolled participant OR the trail's guide
+        allow read: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid ||
+          isTrailGuide(trailId)
+        );
+
+        // Participants can enroll themselves with their own authenticated UID
+        allow create: if isAuthenticated() &&
+                         request.resource.data.userId == request.auth.uid &&
+                         isValidSubscription(request.resource.data);
+
+        // Updates allowed for:
+        // (a) The Trail Guide: marks attendance (toggling 'present' and 'checkedAt')
+        // (b) The Participant: can cancel their own subscription (cannot alter present/checkedAt)
+        allow update: if isAuthenticated() &&
+                         isValidSubscription(request.resource.data) &&
+                         (
+                           // Guide marking attendance
+                           (
+                             isTrailGuide(trailId) &&
+                             areImmutableFieldsUnchanged(['userId', 'createdAt'])
+                           ) ||
+                           // Participant updating/canceling
+                           (
+                             resource.data.userId == request.auth.uid &&
+                             areImmutableFieldsUnchanged(['userId', 'createdAt', 'present', 'checkedAt'])
+                           )
+                         );
+
+        // Subscriber or guide can delete reservation if needed
+        allow delete: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid ||
+          isTrailGuide(trailId)
+        );
+      }
+
+      // -------------------------------------------------------------
+      // Subcollection: Questions (Notice Board / Q&A)
+      // -------------------------------------------------------------
+      match /questions/{questionId} {
+        // Public read for community questions on the trail
+        allow read: if true;
+
+        // Any authenticated user can ask a question
+        allow create: if isAuthenticated() &&
+                         isValidQuestion(request.resource.data) &&
+                         (!('userId' in request.resource.data) || request.resource.data.userId == request.auth.uid);
+
+        // Author or guide can edit
+        allow update: if isAuthenticated() &&
+                         isValidQuestion(request.resource.data) &&
+                         (resource.data.userId == request.auth.uid || isTrailGuide(trailId)) &&
+                         areImmutableFieldsUnchanged(['userId']);
+
+        // Author or guide can delete
+        allow delete: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid ||
+          isTrailGuide(trailId)
+        );
+      }
+
+      // -------------------------------------------------------------
+      // Subcollection: Reviews (Ratings and Feedback)
+      // -------------------------------------------------------------
+      match /reviews/{reviewId} {
+        // Public read for ratings and reviews
+        allow read: if true;
+
+        // Authenticated user can submit their review with their own userId
+        allow create: if isAuthenticated() &&
+                         request.resource.data.userId == request.auth.uid &&
+                         isValidReview(request.resource.data);
+
+        // Only the reviewer can edit their review
+        allow update: if isAuthenticated() &&
+                         resource.data.userId == request.auth.uid &&
+                         isValidReview(request.resource.data) &&
+                         areImmutableFieldsUnchanged(['userId', 'createdAt']);
+
+        // Reviewer can delete their own review
+        allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // 4. Legacy / Auxiliary Events Collection
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if false;
+
+      match /subscriptions/{subId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+  }
+}

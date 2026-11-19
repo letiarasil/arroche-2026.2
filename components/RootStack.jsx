@@ -13,6 +13,7 @@ import MinhasTrilhas from "../screen/MinhasTrilhas";
 import HomeGuia from "../screen/HomeGuia";
 import MinhasTrilhasGuia from "../screen/MinhasTrilhasGuia";
 import CadastrarEvento from "../screen/CadastrarEvento";
+import DadosBancariosCadastur from "../screen/DadosBancariosCadastur";
 import GerenciarTrilhaGuia from "../screen/GerenciarTrilhaGuia";
 import EditarEventoGuia from "../screen/EditarEventoGuia";
 import DetalhesEvento from "../screen/DetalhesEvento";
@@ -42,10 +43,14 @@ function RootStack() {
         );
     }
 
+    const stackKey = !isLoggedIn ? 'auth' : (isGuide ? 'guide' : 'user');
+    const initialRoute = !isLoggedIn ? 'Login' : (isGuide ? 'HomeGuia' : 'Trilhas');
+
     return (
-        <Stack.Navigator 
+        <Stack.Navigator
+            key={stackKey}
             screenOptions={{ headerShown: false }}
-            initialRouteName={!isLoggedIn ? "Login" : (isGuide ? "HomeGuia" : "Trilhas")}
+            initialRouteName={initialRoute}
         >
             {isLoggedIn ? (
                 isGuide ? (
@@ -54,6 +59,7 @@ function RootStack() {
                         <Stack.Screen name="HomeGuia" component={HomeGuia} />
                         <Stack.Screen name="MinhasTrilhasGuia" component={MinhasTrilhasGuia} />
                         <Stack.Screen name="GerenciarTrilhaGuia" component={GerenciarTrilhaGuia} />
+                        <Stack.Screen name="DadosBancariosCadastur" component={DadosBancariosCadastur} />
                         <Stack.Screen name="CadastrarEvento" component={CadastrarEvento} />
                         <Stack.Screen name="EditarEventoGuia" component={EditarEventoGuia} />
                         <Stack.Screen name="DetalhesEvento" component={DetalhesEvento} />
@@ -82,19 +88,25 @@ function RootStack() {
                         <Stack.Screen name="PerfilGuia" component={PerfilGuia} />
                         <Stack.Screen name="Salvos" component={Salvos} />
                         <Stack.Screen name="Perfil" component={Perfil} />
+                        <Stack.Screen name="HomeGuia" component={HomeGuia} />
+                        <Stack.Screen name="MinhasTrilhasGuia" component={MinhasTrilhasGuia} />
+                        <Stack.Screen name="GerenciarTrilhaGuia" component={GerenciarTrilhaGuia} />
+                        <Stack.Screen name="DadosBancariosCadastur" component={DadosBancariosCadastur} />
+                        <Stack.Screen name="CadastrarEvento" component={CadastrarEvento} />
+                        <Stack.Screen name="EditarEventoGuia" component={EditarEventoGuia} />
                     </>
                 )
             ) : (
                 // Telas para usuários não logados (fluxo de autenticação - Login é a tela inicial)
                 <>
-                    <Stack.Screen name="Login" component={Login} />  
-                    <Stack.Screen name="SignIn" component={SignIn} /> 
-                    <Stack.Screen name="ChooseProfile" component={ChooseProfile} /> 
-                    <Stack.Screen name="CreateEmail" component={CreateEmail} />  
-                    <Stack.Screen name="VerifyEmail" component={VerifyEmail} /> 
-                    <Stack.Screen name="CreatePassword" component={CreatePassword} />  
-                    <Stack.Screen name="AccountCreated" component={AccountCreated} />  
-                    <Stack.Screen name="LoginEmail" component={LoginEmail} /> 
+                    <Stack.Screen name="Login" component={Login} />
+                    <Stack.Screen name="SignIn" component={SignIn} />
+                    <Stack.Screen name="ChooseProfile" component={ChooseProfile} />
+                    <Stack.Screen name="CreateEmail" component={CreateEmail} />
+                    <Stack.Screen name="VerifyEmail" component={VerifyEmail} />
+                    <Stack.Screen name="CreatePassword" component={CreatePassword} />
+                    <Stack.Screen name="AccountCreated" component={AccountCreated} />
+                    <Stack.Screen name="LoginEmail" component={LoginEmail} />
                 </>
             )}
         </Stack.Navigator>

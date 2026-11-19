@@ -18,7 +18,6 @@ import {
 } from 'react-native';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
-import { getEventDetails } from '../constants/mockEvents';
 import Menu from '../components/Menu';
 import UserAvatar from '../components/UserAvatar';
 import { useSubscriptions } from '../contexts/SubscriptionsContext';
@@ -37,8 +36,36 @@ export default function DetalhesEvento({ navigation, route }) {
     eventId === 'hist-galinha-choca'
   );
 
-  // Carrega os dados da trilha
-  const [event, setEvent] = useState(() => getEventDetails(eventId, initialItem));
+  // Carrega os dados da trilha (iniciando com os dados passados na rota e atualizando pelo Firestore)
+  const [event, setEvent] = useState(() => ({
+    id: eventId,
+    trailId: eventId,
+    title: initialItem?.title || initialItem?.name || 'Carregando trilha...',
+    description: initialItem?.description || '',
+    departureLocation: initialItem?.departureLocation || '',
+    date: initialItem?.date || '',
+    departureTime: initialItem?.departureTime || '',
+    duration: initialItem?.duration || initialItem?.time || '',
+    distance: initialItem?.distance || '',
+    difficulty: initialItem?.difficulty || 'Fácil',
+    price: typeof initialItem?.price === 'number'
+      ? initialItem.price
+      : (parseFloat(String(initialItem?.price || '10').replace('R$', '').replace(',', '.')) || 10.0),
+    remainingSpots: initialItem?.remainingSpots ?? 10,
+    totalSpots: initialItem?.totalSpots || initialItem?.capacity || 12,
+    guide: {
+      id: initialItem?.guideId || initialItem?.guide?.id || '',
+      name: initialItem?.guideName || initialItem?.author || initialItem?.guide?.name || 'Guia',
+      role: initialItem?.guideRole || initialItem?.guide?.role || 'Guia profissional',
+      avatar: initialItem?.guideAvatar || initialItem?.guide?.avatar || null,
+    },
+    coverImage: initialItem?.imageUrl
+      ? { uri: initialItem.imageUrl }
+      : (initialItem?.coverImage || initialItem?.image || require('../assets/back-arroche.png')),
+    participants: initialItem?.participants || [],
+    photos: initialItem?.photos || (initialItem?.image ? [{ id: 'photo-1', image: initialItem.image }] : []),
+    comments: initialItem?.comments || [],
+  }));
   const { user } = useAuth();
   const { isSubscribed: checkIsSubscribed, cancelSubscription: removeSubscription } = useSubscriptions();
 
@@ -96,21 +123,14 @@ export default function DetalhesEvento({ navigation, route }) {
     };
   }, []);
 
-  // Sincroniza estado de inscrição com contexto
+  // Sincroniza estado de inscrição com contexto (sem auto-abrir modal de dicas)
   useEffect(() => {
     const currentlySubscribed =
-      routeParams.justSubscribed ||
       checkIsSubscribed(eventId) ||
       checkIsSubscribed(event?.id);
 
     setIsSubscribed(currentlySubscribed);
-
-    if (routeParams.justSubscribed) {
-      setShowConfirmationModal(true);
-      const bookedCount = routeParams.ticketCount || ticketCount;
-      setRemainingSpots((prev) => Math.max(0, prev - bookedCount));
-    }
-  }, [eventId, event?.id, routeParams.justSubscribed, routeParams.ticketCount, checkIsSubscribed]);
+  }, [eventId, event?.id, checkIsSubscribed]);
 
   // Busca dados atualizados da trilha no Cloud Firestore
   useEffect(() => {

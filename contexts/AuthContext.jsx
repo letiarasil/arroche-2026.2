@@ -1,13 +1,13 @@
-import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
-import { 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut 
+import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut
 } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { createUserProfile, getUserProfile } from '../services/userService';
-import { getGuideProfile } from '../services/guideService';
+import { getGuideProfile, getStoredBankingInfo } from '../services/guideService';
 import { mockDatabase } from '../constants/mockAuth';
 
 const AuthContext = createContext({});
@@ -20,28 +20,51 @@ export function AuthProvider({ children }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isRegistrationPending, setIsRegistrationPending] = useState(false);
 
+  const registrationPendingRef = useRef(isRegistrationPending);
+  useEffect(() => {
+    registrationPendingRef.current = isRegistrationPending;
+  }, [isRegistrationPending]);
+
   useEffect(() => {
     // Monitora a sessão do usuário no Firebase
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
+        setUserProfile(null);
+        setGuideProfile(null);
+
         try {
           const profile = await getUserProfile(currentUser.uid);
-          setUserProfile(profile);
-          if (profile?.role === 'guide' || profile?.profileType === 'guia') {
+          setUserProfile(profile || null);
+
+          const isGuideRole = profile?.role === 'guide' || profile?.profileType === 'guia';
+          if (isGuideRole) {
             try {
-              const guideData = await getGuideProfile(currentUser.uid);
-              setGuideProfile(guideData);
+              let guideData = await getGuideProfile(currentUser.uid);
+              const storedBanking = await getStoredBankingInfo(currentUser.uid);
+              if (storedBanking) {
+                guideData = {
+                  ...(guideData || {}),
+                  ...storedBanking,
+                  hasCompletedBankingInfo: true,
+                };
+              }
+              setGuideProfile(guideData || null);
             } catch (err) {
               console.warn('Erro ao carregar dados do guia:', err);
+              setGuideProfile(null);
             }
+          } else {
+            setGuideProfile(null);
           }
         } catch (error) {
           console.warn('Não foi possível obter perfil do Firestore:', error?.message);
+          setUserProfile(null);
+          setGuideProfile(null);
         }
 
         // Se o usuário não estiver no meio do cadastro esperando clicar em "Entrar no app"
-        if (!isRegistrationPending) {
+        if (!registrationPendingRef.current) {
           setIsLoggedIn(true);
         }
       } else {
@@ -54,7 +77,7 @@ export function AuthProvider({ children }) {
     });
 
     return () => unsubscribe();
-  }, [isRegistrationPending]);
+  }, []);
 
   // Inicia o fluxo de cadastro e impede redirecionamento antecipado
   const startRegistration = useCallback(() => {
@@ -70,6 +93,7 @@ export function AuthProvider({ children }) {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       currentUser = userCredential.user;
       setUser(currentUser);
+      setGuideProfile(null);
 
       // Cria o perfil inicial na coleção 'users' do Firestore
       try {
@@ -79,10 +103,21 @@ export function AuthProvider({ children }) {
           role,
           ...additionalData,
         });
-        setUserProfile(profileData);
+        setUserProfile(profileData || {
+          id: currentUser.uid,
+          name,
+          email,
+          role,
+          ...additionalData,
+        });
+
         if (role === 'guide' || additionalData.profileType === 'guia') {
-          const gData = await getGuideProfile(currentUser.uid);
-          setGuideProfile(gData);
+          try {
+            const gData = await getGuideProfile(currentUser.uid);
+            setGuideProfile(gData || null);
+          } catch (_e) {
+            setGuideProfile(null);
+          }
         }
       } catch (firestoreError) {
         console.warn('Erro ao salvar perfil no Firestore:', firestoreError?.message);
@@ -96,7 +131,6 @@ export function AuthProvider({ children }) {
         setUserProfile(fallbackProfile);
       }
 
-      // Salva também no mockDatabase para fallback consistente
       mockDatabase.registeredUser = {
         email,
         password,
@@ -108,7 +142,6 @@ export function AuthProvider({ children }) {
       return currentUser;
     } catch (authError) {
       console.warn('Erro na criação de usuário no Firebase Auth:', authError?.message);
-      // Salva no mockDatabase como fallback
       mockDatabase.registeredUser = {
         email,
         password,
@@ -123,16 +156,40 @@ export function AuthProvider({ children }) {
   // Realiza login no Firebase Auth
   const signIn = async (email, password) => {
     setIsRegistrationPending(false);
+    setUserProfile(null);
+    setGuideProfile(null);
+
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     setUser(userCredential.user);
+
     try {
       const profile = await getUserProfile(userCredential.user.uid);
-      setUserProfile(profile);
-      if (profile?.role === 'guide' || profile?.profileType === 'guia') {
-        const guideData = await getGuideProfile(userCredential.user.uid);
-        setGuideProfile(guideData);
+      setUserProfile(profile || null);
+
+      const isGuideRole = profile?.role === 'guide' || profile?.profileType === 'guia';
+      if (isGuideRole) {
+        try {
+          let guideData = await getGuideProfile(userCredential.user.uid);
+          const storedBanking = await getStoredBankingInfo(userCredential.user.uid);
+          if (storedBanking) {
+            guideData = {
+              ...(guideData || {}),
+              ...storedBanking,
+              hasCompletedBankingInfo: true,
+            };
+          }
+          setGuideProfile(guideData || null);
+        } catch (_e) {
+          setGuideProfile(null);
+        }
+      } else {
+        setGuideProfile(null);
       }
-    } catch (_e) {}
+    } catch (_e) {
+      setUserProfile(null);
+      setGuideProfile(null);
+    }
+
     setIsLoggedIn(true);
     return userCredential.user;
   };
@@ -146,6 +203,13 @@ export function AuthProvider({ children }) {
         role: 'guide',
         profileType: 'guia',
       }));
+    } else if (explicitProfileType === 'trilheiro' || explicitProfileType === 'hiker') {
+      setGuideProfile(null);
+      setUserProfile((prev) => ({
+        ...prev,
+        role: 'hiker',
+        profileType: 'trilheiro',
+      }));
     }
     setIsLoggedIn(true);
   }, []);
@@ -153,10 +217,10 @@ export function AuthProvider({ children }) {
   // Função login universal (compatível com chamadas mock e autenticação direta)
   const login = useCallback((mockUser = null) => {
     setIsRegistrationPending(false);
-    setIsLoggedIn(true);
     if (mockUser) {
       setUser(mockUser);
     }
+    setIsLoggedIn(true);
   }, []);
 
   // Função para fazer logout
@@ -165,6 +229,9 @@ export function AuthProvider({ children }) {
       await signOut(auth);
     } catch (e) {
       console.warn('Erro ao deslogar do Firebase:', e?.message);
+    }
+    if (mockDatabase) {
+      mockDatabase.registeredUser = null;
     }
     setUser(null);
     setUserProfile(null);
@@ -175,11 +242,22 @@ export function AuthProvider({ children }) {
 
   const logout = logOut;
 
+  // Atualiza em memória o perfil do guia (ex: dados bancários e Cadastur)
+  const updateGuideProfile = useCallback((newData) => {
+    setGuideProfile((prev) => ({
+      ...(prev || {}),
+      ...newData,
+      hasCompletedBankingInfo: true,
+    }));
+  }, []);
+
   const isGuide = Boolean(
-    userProfile?.role === 'guide' ||
-    userProfile?.profileType === 'guia' ||
-    guideProfile !== null ||
-    mockDatabase.registeredUser?.profileType === 'guia'
+    user &&
+    (userProfile?.role === 'guide' ||
+      userProfile?.profileType === 'guia' ||
+      user?.profileType === 'guia' ||
+      user?.role === 'guide' ||
+      Boolean(guideProfile && Object.keys(guideProfile).length > 0))
   );
 
   return (
@@ -197,6 +275,7 @@ export function AuthProvider({ children }) {
         login,
         enterApp,
         startRegistration,
+        updateGuideProfile,
         logOut,
         logout,
       }}

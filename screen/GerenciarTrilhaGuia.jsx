@@ -14,7 +14,7 @@ import {
   KeyboardAvoidingView,
   Keyboard,
 } from 'react-native';
-import { Feather, FontAwesome } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { auth } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -48,33 +48,27 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
   const [trail, setTrail] = useState(initialItem || null);
   const [loading, setLoading] = useState(!initialItem);
 
-  // Inscrições / Participantes dinâmicos do Firestore
   const [subscriptions, setSubscriptions] = useState([]);
   const [loadingSubscriptions, setLoadingSubscriptions] = useState(true);
 
-  // Quadro de Avisos / Perguntas
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [isSendingComment, setIsSendingComment] = useState(false);
 
   const mainScrollRef = useRef(null);
 
-  // Carrega os dados da trilha, inscrições e perguntas do Firestore
   const loadData = useCallback(async () => {
     if (!trailId) return;
 
     try {
-      // 1. Busca dados da trilha
       const fetchedTrail = await getTrailById(trailId);
       if (fetchedTrail) {
         setTrail(fetchedTrail);
       }
 
-      // 2. Busca inscrições reais do Firestore
       const fetchedSubs = await getTrailSubscriptions(trailId);
       setSubscriptions(fetchedSubs || []);
 
-      // 3. Busca perguntas do quadro
       const fetchedQuestions = await getTrailQuestions(trailId);
       if (fetchedQuestions && fetchedQuestions.length > 0) {
         setComments(fetchedQuestions);
@@ -93,7 +87,6 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
     loadData();
   }, [loadData]);
 
-  // Listener em tempo real para Inscrições e Lista de Frequência no Firestore
   useEffect(() => {
     if (!trailId) return;
 
@@ -113,23 +106,27 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
     return () => unsubscribe();
   }, [trailId]);
 
-  // Alternar presença do participante na Lista de Frequência
   const handleToggleAttendance = async (participantId, currentPresent) => {
+    if (!participantId) return;
+    const targetId = String(participantId);
     const nextPresent = !currentPresent;
 
-    // Atualização otimista na tela do guia
     setSubscriptions((prev) =>
-      prev.map((p) => (p.id === participantId ? { ...p, present: nextPresent } : p))
+      prev.map((p, idx) => {
+        const itemId = String(p?.id || p?.localId || `sub_${idx}`);
+        return itemId === targetId
+          ? { ...p, id: itemId, present: nextPresent, _localAttendanceAt: Date.now() }
+          : p;
+      })
     );
 
     try {
-      await toggleParticipantAttendance(trailId, participantId, nextPresent);
+      await toggleParticipantAttendance(trailId, targetId, nextPresent);
     } catch (err) {
       console.warn('Aviso ao registrar presença:', err?.message);
     }
   };
 
-  // Enviar nova mensagem no Quadro de Avisos
   const handleSendComment = async () => {
     const textTrimmed = newComment.trim();
     if (!textTrimmed || !trailId) return;
@@ -153,7 +150,6 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
     }
   };
 
-  // Validação estrita de propriedade da trilha: Guia só edita ou cancela o que ele próprio criou
   const currentGuideName = (guideProfile?.name || userProfile?.name || '').trim().toLowerCase();
   const trailAuthor = (trail?.author || '').trim().toLowerCase();
   const trailGuideName = (trail?.guideName || '').trim().toLowerCase();
@@ -198,7 +194,6 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
     );
   };
 
-  // Botão Editar
   const handleGoToEdit = () => {
     if (!isOwner) {
       Alert.alert('Acesso Restrito', 'Você só pode editar trilhas criadas por você.');
@@ -220,16 +215,28 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
     );
   }
 
+  const uniqueSubscriptions = Array.from(
+    new Map(
+      (subscriptions || [])
+        .filter((item) => item && item.status !== 'cancelada' && (item.name || item.userId || item.email))
+        .map((item, idx) => {
+          const hikerId = item?.userId || item?.uid || item?.hikerId;
+          const safeId = String(item?.id || item?.localId || `sub_${idx}`);
+          const uniqueKey = hikerId ? `user_${String(hikerId).trim()}` : `sub_${safeId}`;
+          return [uniqueKey, { ...item, id: safeId }];
+        })
+    ).values()
+  );
+
   const coverSource = resolveTrailImage(trail.coverImageKey || trail.imageKey || trail.coverImage || trail.image);
   const guideDisplayName = trail.guideName || guideProfile?.name || userProfile?.name || 'João Lucas';
   const totalCapacity = trail.capacity || trail.totalSpots || 12;
-  const totalBookedSpots = subscriptions.reduce(
+  const totalBookedSpots = uniqueSubscriptions.reduce(
     (sum, s) => sum + (parseInt(s.ticketCount, 10) || 1),
     0
   );
-  const filledCount = subscriptions.length > 0 ? totalBookedSpots : (trail.filledSpots || 0);
-  const presentCount = subscriptions.filter((s) => s.present).length;
-  const priceDisplay = trail.formattedPrice || (trail.price ? `R$ ${Number(trail.price).toFixed(2).replace('.', ',')}` : 'R$ 10,00');
+  const filledCount = uniqueSubscriptions.length > 0 ? totalBookedSpots : (trail.filledSpots || 0);
+  const presentCount = uniqueSubscriptions.filter((s) => Boolean(s.present)).length;
 
   return (
     <View style={styles.screenContainer}>
@@ -246,11 +253,9 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Header com Foto de Capa da Trilha */}
           <View style={styles.heroContainer}>
             <Image source={coverSource} style={styles.heroImage} resizeMode="cover" />
 
-            {/* Botão circular de fechar (X) no topo direito */}
             <TouchableOpacity
               style={styles.closeButton}
               onPress={() => {
@@ -266,24 +271,17 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
             </TouchableOpacity>
           </View>
 
-          {/* Cartão Branco Sobreposto */}
           <View style={styles.sheetCard}>
-            {/* Seletor de Abas: Trilha | Inscrições */}
             <TabSelector
               tabs={TABS}
               activeTab={activeTab}
               onSelectTab={setActiveTab}
             />
 
-            {/* ======================================================== */}
-            {/* ABA 1: TRILHA */}
-            {/* ======================================================== */}
             {activeTab === 'trilha' && (
               <View style={styles.tabContent}>
-                {/* Nome da Trilha */}
                 <Text style={styles.trailTitle}>{trail.title || trail.name}</Text>
 
-                {/* Identificação do Guia */}
                 <View style={styles.guideRow}>
                   <View style={styles.guideAvatar}>
                     <Feather name="user" size={14} color="#FFFFFF" />
@@ -293,20 +291,17 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
                   </Text>
                 </View>
 
-                {/* Seção Descrição */}
                 <Text style={styles.sectionHeaderGreen}>Descrição</Text>
                 <Text style={styles.descriptionText}>
                   {trail.description ||
                     'A Trilha do Sítio Lemos (ou Trilha da Julieta) é um percurso curto, de fácil acesso e ideal para iniciantes, localizado na zona urbana de Quixadá (CE), a cerca de dois quilômetros do centro e com início próximo ao Remanso da Paz.'}
                 </Text>
 
-                {/* Seção Local de Saída */}
                 <Text style={styles.sectionHeaderGreen}>Local de Saída</Text>
                 <Text style={styles.locationText}>
                   {trail.departureLocation || 'Praça José de Barros, Quixadá-CE'}
                 </Text>
 
-                {/* Linha com 4 Metadados: Data, Horário, Duração, Distância */}
                 <View style={styles.statsRow}>
                   <View style={styles.statCol}>
                     <Text style={styles.statLabel}>Data</Text>
@@ -329,7 +324,6 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
                   </View>
                 </View>
 
-                {/* Galeria de Fotos */}
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -350,7 +344,6 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
                   />
                 </ScrollView>
 
-                {/* Seção Quadro de Avisos / Perguntas */}
                 <Text style={[styles.sectionHeaderGreen, { marginTop: 18 }]}>
                   Quadro de Avisos/ Perguntas
                 </Text>
@@ -361,7 +354,7 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
                   </Text>
                 ) : (
                   comments.map((c, index) => (
-                    <View key={c.id || index} style={styles.commentRow}>
+                    <View key={`${c?.id ?? 'comment'}_${index}`} style={styles.commentRow}>
                       <View style={styles.commentAvatar}>
                         <Feather name="user" size={16} color={colors.primary} />
                       </View>
@@ -373,7 +366,6 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
                   ))
                 )}
 
-                {/* Campo para digitar e enviar mensagens */}
                 <View style={styles.commentInputBox}>
                   <TextInput
                     style={styles.commentInput}
@@ -403,12 +395,8 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
               </View>
             )}
 
-            {/* ======================================================== */}
-            {/* ABA 2: INSCRIÇÕES E LISTA DE FREQUÊNCIA */}
-            {/* ======================================================== */}
             {activeTab === 'inscricoes' && (
               <View style={styles.tabContent}>
-                {/* Cabeçalho da Lista de Frequência com Indicador de Tempo Real */}
                 <View style={styles.frequenciaHeader}>
                   <View>
                     <Text style={styles.vagasTitle}>Lista de Frequência</Text>
@@ -422,14 +410,13 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
                   </View>
                 </View>
 
-                {/* Métricas da Lista de Frequência */}
                 <View style={styles.frequenciaMetricsGrid}>
                   <View style={styles.metricCard}>
                     <Text style={styles.metricNumber}>{filledCount}/{totalCapacity}</Text>
                     <Text style={styles.metricLabel}>Vagas Ocupadas</Text>
                   </View>
                   <View style={styles.metricCard}>
-                    <Text style={styles.metricNumber}>{subscriptions.length}</Text>
+                    <Text style={styles.metricNumber}>{uniqueSubscriptions.length}</Text>
                     <Text style={styles.metricLabel}>Inscritos</Text>
                   </View>
                   <View style={styles.metricCard}>
@@ -438,16 +425,14 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
                   </View>
                 </View>
 
-                {/* Divisor */}
                 <View style={styles.horizontalDivider} />
 
-                {/* Lista de Pessoas Inscritas (Carregadas do Firebase em Tempo Real) */}
                 {loadingSubscriptions ? (
                   <View style={{ paddingVertical: 30, alignItems: 'center' }}>
                     <ActivityIndicator size="small" color={colors.primary} />
                     <Text style={styles.loadingText}>Sincronizando participantes...</Text>
                   </View>
-                ) : subscriptions.length === 0 ? (
+                ) : uniqueSubscriptions.length === 0 ? (
                   <View style={styles.emptySubscriptionsContainer}>
                     <Feather name="users" size={38} color="#9CA3AF" />
                     <Text style={styles.emptySubsTitle}>Nenhum participante inscrito</Text>
@@ -456,12 +441,13 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
                     </Text>
                   </View>
                 ) : (
-                  subscriptions.map((participant) => {
+                  uniqueSubscriptions.map((participant, index) => {
+                    const safeId = String(participant?.id || participant?.localId || `sub_${index}`);
                     const isPresent = Boolean(participant.present);
                     const spots = participant.ticketCount || 1;
 
                     return (
-                      <View key={participant.id} style={styles.participantCard}>
+                      <View key={`${safeId}_${index}`} style={styles.participantCard}>
                         <View style={styles.participantAvatarWrapper}>
                           {participant.avatar ? (
                             <Image
@@ -491,14 +477,13 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
                           </View>
                         </View>
 
-                        {/* Botão de Marcar / Desmarcar Presença para o Guia */}
                         <TouchableOpacity
                           style={[
                             styles.attendanceBtn,
                             isPresent && styles.attendanceBtnPresent,
                           ]}
                           activeOpacity={0.75}
-                          onPress={() => handleToggleAttendance(participant.id, isPresent)}
+                          onPress={() => handleToggleAttendance(safeId, isPresent)}
                         >
                           <Feather
                             name={isPresent ? 'check-circle' : 'circle'}
@@ -522,10 +507,8 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
               </View>
             )}
 
-            {/* BOTÕES DE AÇÃO: EDITAR e CANCELAR (Apenas exibidos para o Guia criador do evento) */}
             {isOwner && (
               <View style={styles.actionButtonsRow}>
-                {/* Botão Editar */}
                 <TouchableOpacity
                   style={styles.editActionButton}
                   onPress={handleGoToEdit}
@@ -535,7 +518,6 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
                   <Text style={styles.editActionText}>Editar</Text>
                 </TouchableOpacity>
 
-                {/* Botão Cancelar */}
                 <TouchableOpacity
                   style={styles.cancelActionButton}
                   onPress={handleConfirmCancelTrail}
@@ -550,7 +532,6 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Menu Inferior do Guia */}
       <MenuGuia activeTab="Trilhas" navigation={navigation} />
     </View>
   );
@@ -762,7 +743,6 @@ const styles = StyleSheet.create({
   sendButton: {
     padding: 6,
   },
-  /* ABA 2: Inscrições e Lista de Frequência */
   frequenciaHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -824,22 +804,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: '#111827',
-  },
-  inscricoesMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  metaSubLabel: {
-    fontSize: 12.5,
-    color: '#4B5563',
-    fontWeight: '600',
-  },
-  metaSubValue: {
-    fontSize: 13,
-    color: '#111827',
-    fontWeight: '700',
-    marginTop: 2,
   },
   horizontalDivider: {
     height: 1,
@@ -966,7 +930,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 18,
   },
-  /* BOTÕES DE AÇÃO: EDITAR e CANCELAR */
   actionButtonsRow: {
     flexDirection: 'row',
     gap: 12,

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,33 +12,66 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   BackHandler,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather, FontAwesome5 } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
-import { MOCK_GUIDE_PROFILE, getGuideById } from '../constants/mockGuideProfile';
+import { getGuideProfile, addGuideComment } from '../services/guideService';
+import { getGuideTrails } from '../services/trailService';
 import Menu from '../components/Menu';
 import TrailCard from '../components/TrailCard';
 import UserAvatar from '../components/UserAvatar';
 
 export default function PerfilGuia({ navigation, route }) {
-  const guide =
-    route?.params?.guide ||
-    getGuideById(route?.params?.guideId) ||
-    MOCK_GUIDE_PROFILE;
+  const initialGuide = route?.params?.guide || null;
+  const guideId = route?.params?.guideId || initialGuide?.id;
   const activeTab = route?.params?.activeTab || 'Guias';
 
-  // Estados funcionais da tela
+  const [guide, setGuide] = useState(initialGuide);
+  const [guideTrails, setGuideTrails] = useState(initialGuide?.availableTrails || []);
+  const [loading, setLoading] = useState(!initialGuide);
   const [savedTrails, setSavedTrails] = useState({});
-  const [comments, setComments] = useState(guide.comments || []);
+  const [comments, setComments] = useState(initialGuide?.comments || []);
   const [newComment, setNewComment] = useState('');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const mainScrollRef = useRef(null);
 
-  // Sincroniza a lista de comentários caso o guia mude
+  // Carrega os dados reais do guia e suas trilhas diretamente do Firestore
+  const loadGuideData = useCallback(async () => {
+    if (!guideId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const [fetchedGuide, fetchedTrails] = await Promise.all([
+        getGuideProfile(guideId),
+        getGuideTrails(guideId, initialGuide?.name || initialGuide?.displayName),
+      ]);
+
+      if (fetchedGuide) {
+        setGuide(fetchedGuide);
+        if (fetchedGuide.comments) {
+          setComments(fetchedGuide.comments);
+        }
+      }
+
+      if (fetchedTrails && fetchedTrails.length > 0) {
+        setGuideTrails(fetchedTrails);
+      } else if (fetchedGuide?.availableTrails) {
+        setGuideTrails(fetchedGuide.availableTrails);
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar dados do guia no Firestore:', err?.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [guideId, initialGuide?.name, initialGuide?.displayName]);
+
   useEffect(() => {
-    setComments(guide.comments || []);
-  }, [guide.id]);
+    loadGuideData();
+  }, [loadGuideData]);
 
   // Monitora abertura e fechamento do teclado para evitar sobreposição
   useEffect(() => {
@@ -95,14 +128,11 @@ export default function PerfilGuia({ navigation, route }) {
     setSavedTrails((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Enviar novo comentário / experiência
-  const handleSendComment = () => {
+  // Enviar novo comentário / experiência no perfil do guia
+  const handleSendComment = async () => {
     const textTrimmed = newComment.trim();
     if (!textTrimmed) return;
 
-    // BACKEND INTEGRATION:
-    // POST /api/v1/guides/:id/comments
-    // Payload: { text: textTrimmed, guideId: guide.id }
     const newEntry = {
       id: `c_${Date.now()}`,
       name: 'Você',
@@ -113,7 +143,31 @@ export default function PerfilGuia({ navigation, route }) {
     setComments((prev) => [...prev, newEntry]);
     setNewComment('');
     Keyboard.dismiss();
+
+    try {
+      if (guideId) {
+        await addGuideComment(guideId, { text: textTrimmed, name: 'Você' });
+      }
+    } catch (_e) {}
   };
+
+  if (loading && !guide) {
+    return (
+      <View style={[styles.screenContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 12, color: colors.textSecondary }}>Carregando perfil do guia...</Text>
+      </View>
+    );
+  }
+
+  const guideDisplayName = guide?.displayName || guide?.name || 'Guia Arroche';
+  const guideRole = guide?.role || 'Guia Profissional';
+  const guideSpecialties = guide?.specialties || 'Trilhas • Ecoturismo • Turismo de Aventura';
+  const bio = guide?.bio || guide?.bioPrefix
+    ? `${guide?.bioPrefix || ''}${guide?.bioHighlight || ''}${guide?.bioSuffix || ''}`
+    : 'Guia cadastrado no aplicativo Arroche com foco em segurança, preservação e aventura.';
+  const trailsCount = guideTrails.length || guide?.trailsCount || 0;
+  const coverImage = guide?.coverImage || require('../assets/back-arroche.png');
 
   return (
     <View style={styles.screenContainer}>
@@ -139,7 +193,7 @@ export default function PerfilGuia({ navigation, route }) {
           {/* Header com Imagem de Capa do Guia */}
           <View style={styles.heroContainer}>
             <Image
-              source={guide.coverImage}
+              source={typeof coverImage === 'string' ? { uri: coverImage } : coverImage}
               style={styles.heroImage}
               resizeMode="cover"
             />
@@ -159,8 +213,8 @@ export default function PerfilGuia({ navigation, route }) {
             {/* Foto de Perfil Circular Sobreposta */}
             <View style={styles.avatarWrapper}>
               <UserAvatar
-                source={guide.avatar}
-                name={guide.displayName || guide.name}
+                source={guide?.avatar}
+                name={guideDisplayName}
                 size={96}
                 style={styles.avatarImage}
               />
@@ -169,26 +223,22 @@ export default function PerfilGuia({ navigation, route }) {
             {/* Identificação do Guia */}
             <View style={styles.guideHeader}>
               <Text style={styles.guideName}>
-                {guide.name}{' '}
-                <Text style={styles.guideRole}>• {guide.role}</Text>
+                {guideDisplayName}{' '}
+                <Text style={styles.guideRole}>• {guideRole}</Text>
               </Text>
 
               {/* Especialidades */}
               <Text style={styles.specialtiesTitle}>Especialidades:</Text>
-              <Text style={styles.specialtiesList}>{guide.specialties}</Text>
+              <Text style={styles.specialtiesList}>{guideSpecialties}</Text>
 
               {/* Biografia */}
-              <Text style={styles.bioText}>
-                {guide.bioPrefix}
-                <Text style={styles.bioHighlight}>{guide.bioHighlight}</Text>
-                {guide.bioSuffix}
-              </Text>
+              <Text style={styles.bioText}>{bio}</Text>
 
               {/* Indicador de Trilhas Realizadas */}
               <View style={styles.trailsCountBadge}>
                 <FontAwesome5 name="hiking" size={14} color={colors.primary} />
                 <Text style={styles.trailsCountText}>
-                  {guide.trailsCount} Trilhas Realizadas
+                  {trailsCount} {trailsCount === 1 ? 'Trilha Disponível' : 'Trilhas Disponíveis'}
                 </Text>
               </View>
             </View>
@@ -197,7 +247,7 @@ export default function PerfilGuia({ navigation, route }) {
             <View style={styles.divider} />
 
             {/* Seção: Trilhas Disponíveis */}
-            {guide.availableTrails && guide.availableTrails.length > 0 && (
+            {guideTrails && guideTrails.length > 0 && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Trilhas Disponíveis</Text>
                 <ScrollView
@@ -205,7 +255,7 @@ export default function PerfilGuia({ navigation, route }) {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.horizontalScrollContent}
                 >
-                  {guide.availableTrails.map((trail) => (
+                  {guideTrails.map((trail) => (
                     <TrailCard
                       key={trail.id}
                       item={trail}
@@ -223,44 +273,49 @@ export default function PerfilGuia({ navigation, route }) {
               </View>
             )}
 
+            {/* Divisor */}
+            {guideTrails && guideTrails.length > 0 && <View style={styles.divider} />}
+
             {/* Seção: Fotos Compartilhadas */}
-            {guide.sharedPhotos && guide.sharedPhotos.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Fotos Compartilhadas</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.horizontalScrollContent}
-                >
-                  {guide.sharedPhotos.map((photo) => (
-                    <View key={photo.id} style={styles.photoCard}>
-                      <Image
-                        source={photo.image}
-                        style={styles.sharedPhoto}
-                        resizeMode="cover"
-                      />
-                    </View>
-                  ))}
-                </ScrollView>
-              </View>
+            {guide?.sharedPhotos && guide.sharedPhotos.length > 0 && (
+              <>
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Fotos Compartilhadas</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.horizontalScrollContent}
+                  >
+                    {guide.sharedPhotos.map((photo, index) => (
+                      <View key={photo.id || index} style={styles.photoCard}>
+                        <Image
+                          source={typeof photo.image === 'string' ? { uri: photo.image } : photo.image}
+                          style={styles.photoImage}
+                          resizeMode="cover"
+                        />
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+                <View style={styles.divider} />
+              </>
             )}
 
-            {/* Seção: Comentários */}
+            {/* Seção: Experiências e Comentários */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Comentários</Text>
+              <Text style={styles.sectionTitle}>Experiências</Text>
 
-              {/* Lista de Comentários */}
               {comments.map((comment, index) => (
                 <View key={comment.id || index}>
                   <View style={styles.commentItem}>
                     <UserAvatar
                       source={comment.avatar}
-                      name={comment.name}
+                      name={comment.name || comment.userName}
                       size={42}
                       style={styles.commentAvatar}
                     />
                     <View style={styles.commentBody}>
-                      <Text style={styles.commentAuthor}>{comment.name}</Text>
+                      <Text style={styles.commentAuthor}>{comment.name || comment.userName}</Text>
                       <Text style={styles.commentText}>{comment.text}</Text>
                     </View>
                   </View>
@@ -270,12 +325,18 @@ export default function PerfilGuia({ navigation, route }) {
                 </View>
               ))}
 
-              {/* Campo para Adicionar Experiência */}
+              {comments.length === 0 && (
+                <Text style={styles.emptyCommentsText}>
+                  Ainda não há avaliações para este guia. Seja o primeiro a comentar!
+                </Text>
+              )}
+
+              {/* Input para Adicionar Novo Comentário */}
               <View style={styles.commentInputContainer}>
                 <TextInput
                   style={styles.commentTextInput}
-                  placeholder="Fale sobre sua Experiência..."
-                  placeholderTextColor="#6B7280"
+                  placeholder="Deixe uma pergunta ou experiência..."
+                  placeholderTextColor="#9CA3AF"
                   value={newComment}
                   onChangeText={setNewComment}
                   onSubmitEditing={handleSendComment}
@@ -295,7 +356,7 @@ export default function PerfilGuia({ navigation, route }) {
                   <Feather
                     name="send"
                     size={18}
-                    color={newComment.trim() ? colors.primary : '#111827'}
+                    color={newComment.trim() ? colors.primary : '#9CA3AF'}
                   />
                 </TouchableOpacity>
               </View>
@@ -304,7 +365,7 @@ export default function PerfilGuia({ navigation, route }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Menu Inferior Fixo com Opções: Trilhas, Guias, Salvos e Perfil */}
+      {/* Menu Inferior */}
       {keyboardHeight === 0 && (
         <Menu activeTab={activeTab} navigation={navigation} />
       )}
@@ -324,15 +385,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 20,
+    paddingBottom: 24,
   },
-
-  /* Hero / Header Imagem */
   heroContainer: {
     width: '100%',
-    height: 250,
+    height: 220,
     position: 'relative',
-    backgroundColor: '#E5E7EB',
   },
   heroImage: {
     width: '100%',
@@ -340,127 +398,100 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? (StatusBar.currentHeight || 20) + 12 : 46,
+    top: Platform.OS === 'android' ? (StatusBar.currentHeight || 20) + 12 : 48,
     right: 18,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    elevation: 4,
-    zIndex: 10,
-  },
-
-  /* Cartão de Conteúdo Sobreposto */
-  cardContainer: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    marginTop: -32,
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-
-  /* Foto de Perfil Circular Sobreposta */
-  avatarWrapper: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
-    alignSelf: 'center',
-    marginTop: -52,
-    overflow: 'hidden',
-    backgroundColor: '#E5E7EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 6,
-    zIndex: 5,
+    shadowRadius: 3,
+  },
+  cardContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    marginTop: -32,
+    paddingTop: 16,
+    paddingHorizontal: 20,
+  },
+  avatarWrapper: {
+    alignSelf: 'center',
+    marginTop: -58,
+    padding: 3,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 54,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
   avatarImage: {
-    width: '100%',
-    height: '100%',
+    borderRadius: 48,
   },
-
-  /* Cabeçalho de Informações do Guia */
   guideHeader: {
-    marginTop: 14,
+    alignItems: 'center',
+    marginTop: 8,
   },
   guideName: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
-    letterSpacing: -0.2,
+    color: colors.text,
+    textAlign: 'center',
   },
   guideRole: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: 'normal',
+    color: colors.textSecondary,
   },
   specialtiesTitle: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: '#111827',
-    marginTop: 10,
+    color: colors.text,
+    marginTop: 8,
+    textAlign: 'center',
   },
   specialtiesList: {
     fontSize: 13,
-    color: '#374151',
+    color: colors.textSecondary,
     marginTop: 2,
+    textAlign: 'center',
   },
   bioText: {
-    fontSize: 12.5,
+    fontSize: 13,
+    color: colors.textSecondary,
     lineHeight: 18,
-    color: '#374151',
-    marginTop: 10,
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 8,
   },
-  bioHighlight: {
-    fontWeight: '700',
-    color: '#111827',
-  },
-
-  /* Badge de Trilhas Realizadas */
   trailsCountBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderWidth: 1.2,
-    borderColor: colors.primary,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
     marginTop: 12,
-    alignSelf: 'flex-start',
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 16,
+    gap: 6,
   },
   trailsCountText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: colors.primary,
   },
-
-  /* Linha Divisória */
   divider: {
     height: 1,
     backgroundColor: '#E5E7EB',
-    marginVertical: 14,
+    marginVertical: 18,
   },
-
-  /* Seções */
   section: {
     marginBottom: 8,
   },
@@ -468,78 +499,73 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
     color: colors.primary,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   horizontalScrollContent: {
-    paddingRight: 8,
+    paddingRight: 10,
+    gap: 12,
   },
-
-  /* Fotos Compartilhadas */
   photoCard: {
-    width: 155,
-    height: 165,
-    borderRadius: 16,
+    width: 140,
+    height: 100,
+    borderRadius: 10,
     overflow: 'hidden',
-    marginRight: 12,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#F3F4F6',
   },
-  sharedPhoto: {
+  photoImage: {
     width: '100%',
     height: '100%',
   },
-
-  /* Comentários */
   commentItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingVertical: 4,
+    paddingVertical: 8,
   },
   commentAvatar: {
     marginRight: 12,
-    marginTop: 2,
   },
   commentBody: {
     flex: 1,
   },
   commentAuthor: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: 'bold',
+    color: colors.text,
   },
   commentText: {
     fontSize: 12,
-    lineHeight: 17,
-    color: '#374151',
+    color: colors.textSecondary,
     marginTop: 2,
+    lineHeight: 16,
   },
   commentDivider: {
     height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 12,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 4,
   },
-
-  /* Input de Experiência */
+  emptyCommentsText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginVertical: 8,
+  },
   commentInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#9CA3AF',
-    borderRadius: 8,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
     paddingHorizontal: 14,
-    height: 46,
+    height: 44,
     marginTop: 14,
-    marginBottom: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F9FAFB',
   },
   commentTextInput: {
     flex: 1,
     fontSize: 13,
-    color: '#111827',
-    paddingVertical: 0,
+    color: colors.text,
   },
   sendButton: {
     padding: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

@@ -20,6 +20,7 @@ import {
   getGuideTrails,
   getGuideHistory,
 } from '../services/trailService';
+import { checkGuideHasBankingInfo } from '../services/guideService';
 import HeaderWithBell from '../components/HeaderWithBell';
 import SearchBar from '../components/SearchBar';
 import TabSelector from '../components/TabSelector';
@@ -165,8 +166,20 @@ export default function HomeGuia({ navigation, route }) {
     });
   };
 
-  // Abrir tela de cadastro de evento
-  const handleOpenCadastrarEvento = () => {
+  // Abrir tela de cadastro de evento (com verificação de Dados Bancários e Cadastur)
+  const handleOpenCadastrarEvento = async () => {
+    try {
+      const hasBanking = await checkGuideHasBankingInfo(guideId, guideProfile);
+      if (!hasBanking) {
+        navigation?.navigate('DadosBancariosCadastur', { returnTo: 'CadastrarEvento' });
+        return;
+      }
+    } catch (_err) {
+      if (!guideProfile?.hasCompletedBankingInfo && !guideProfile?.cadasturNumber) {
+        navigation?.navigate('DadosBancariosCadastur', { returnTo: 'CadastrarEvento' });
+        return;
+      }
+    }
     navigation?.navigate('CadastrarEvento');
   };
 

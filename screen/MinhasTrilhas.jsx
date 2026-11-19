@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   StatusBar,
   Platform,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import HeaderWithBell from '../components/HeaderWithBell';
@@ -24,9 +25,16 @@ const TABS = [
 
 export default function MinhasTrilhas({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const { scheduledTrails, historyTrails } = useSubscriptions();
+  const { scheduledTrails, historyTrails, refreshSubscriptions } = useSubscriptions();
 
-  // Filtragem pela busca
+  useFocusEffect(
+    useCallback(() => {
+      if (typeof refreshSubscriptions === 'function') {
+        refreshSubscriptions();
+      }
+    }, [refreshSubscriptions])
+  );
+
   const filterQuery = searchQuery.trim().toLowerCase();
 
   const filteredScheduled = scheduledTrails.filter((trail) => {
@@ -66,10 +74,8 @@ export default function MinhasTrilhas({ navigation }) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Header Superior com Logo e Notificações */}
         <HeaderWithBell onBellPress={() => navigation?.navigate('Notificacoes')} />
 
-        {/* Barra de Pesquisa */}
         <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -77,7 +83,6 @@ export default function MinhasTrilhas({ navigation }) {
           onFilterPress={() => {}}
         />
 
-        {/* Abas Superiores (Trilhas Disponíveis | Minhas Trilhas) */}
         <TabSelector
           tabs={TABS}
           activeTab="minhas"
@@ -108,20 +113,18 @@ export default function MinhasTrilhas({ navigation }) {
               )}
             </View>
           ) : (
-            filteredScheduled.map((item) => (
+            filteredScheduled.map((item, index) => (
               <TouchableOpacity
-                key={item.id}
+                key={`${item.id || item.trailId || 'sched'}_${index}`}
                 style={styles.card}
                 activeOpacity={0.88}
                 onPress={() => handleOpenDetails(item)}
               >
-                {/* Cabeçalho do Card: Data */}
                 <View style={styles.cardTop}>
                   <Text style={styles.dateLabel}>Data:</Text>
                   <Text style={styles.dateValue}>{item.date}</Text>
                 </View>
 
-                {/* Corpo do Card: Avatar do Guia + Informações da Trilha */}
                 <View style={styles.cardBody}>
                   <View
                     style={[
@@ -149,12 +152,10 @@ export default function MinhasTrilhas({ navigation }) {
                   </View>
                 </View>
 
-                {/* Linha Divisória Pontilhada */}
                 <View style={styles.dashedDividerWrapper}>
                   <View style={styles.dashedDivider} />
                 </View>
 
-                {/* Rodapé do Card: Botão Detalhes com Chevron Verde */}
                 <View style={styles.cardFooter}>
                   <Text style={styles.detailsGreenText}>Detalhes</Text>
                   <Feather name="chevron-right" size={18} color="#2E7D32" />
@@ -179,20 +180,18 @@ export default function MinhasTrilhas({ navigation }) {
               </Text>
             </View>
           ) : (
-            filteredHistory.map((item) => (
+            filteredHistory.map((item, index) => (
               <TouchableOpacity
-                key={item.id}
+                key={`${item.id || item.trailId || 'hist'}_${index}`}
                 style={styles.card}
                 activeOpacity={0.88}
                 onPress={() => handleOpenDetails(item, true)}
               >
-                {/* Cabeçalho do Card: Data */}
                 <View style={styles.cardTop}>
                   <Text style={styles.dateLabel}>Data:</Text>
                   <Text style={styles.dateValue}>{item.date}</Text>
                 </View>
 
-                {/* Corpo do Card: Avatar do Guia + Informações da Trilha */}
                 <View style={styles.cardBody}>
                   <View
                     style={[
@@ -220,12 +219,10 @@ export default function MinhasTrilhas({ navigation }) {
                   </View>
                 </View>
 
-                {/* Linha Divisória Pontilhada */}
                 <View style={styles.dashedDividerWrapper}>
                   <View style={styles.dashedDivider} />
                 </View>
 
-                {/* Rodapé do Card: Botão Detalhes com Chevron Cinza */}
                 <View style={styles.cardFooter}>
                   <Text style={styles.detailsGrayText}>Detalhes</Text>
                   <Feather name="chevron-right" size={18} color="#6B7280" />
@@ -236,7 +233,6 @@ export default function MinhasTrilhas({ navigation }) {
         </View>
       </ScrollView>
 
-      {/* Menu Inferior Fixo de Navegação */}
       <Menu activeTab="Trilhas" navigation={navigation} />
     </View>
   );
@@ -273,7 +269,6 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 10,
     marginBottom: 18,
-    // Sombra suave
     ...Platform.select({
       ios: {
         shadowColor: '#000',

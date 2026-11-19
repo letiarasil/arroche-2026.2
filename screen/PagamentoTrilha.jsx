@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,14 +14,14 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
+import { doc, setDoc, arrayUnion } from 'firebase/firestore';
 import { colors } from '../constants/colors';
-import { getEventDetails } from '../constants/mockEvents';
 import Menu from '../components/Menu';
 import UserAvatar from '../components/UserAvatar';
 import { useSubscriptions } from '../contexts/SubscriptionsContext';
 import { useAuth } from '../contexts/AuthContext';
-import { auth } from '../services/firebase';
-import { addTrailSubscription } from '../services/trailService';
+import { auth, db } from '../services/firebase';
+import { addTrailSubscription, getTrailById } from '../services/trailService';
 
 // Ícone SVG de Cartão de Crédito
 function CardIcon({ size = 22, color = '#3B82F6' }) {
@@ -37,8 +37,16 @@ function CardIcon({ size = 22, color = '#3B82F6' }) {
 
 export default function PagamentoTrilha({ navigation, route }) {
   const routeParams = route?.params || {};
-  const event = routeParams.event || getEventDetails(routeParams.eventId, routeParams.item);
+  const [event, setEvent] = useState(() => routeParams.event || routeParams.item || { id: routeParams.eventId, title: 'Trilha', price: 10.0 });
   const ticketCount = routeParams.ticketCount || 1;
+
+  useEffect(() => {
+    if (!routeParams.event && routeParams.eventId) {
+      getTrailById(routeParams.eventId).then((fetched) => {
+        if (fetched) setEvent(fetched);
+      });
+    }
+  }, [routeParams.eventId, routeParams.event]);
 
   const { user, userProfile } = useAuth();
   const { subscribeToTrail } = useSubscriptions();
@@ -73,7 +81,7 @@ export default function PagamentoTrilha({ navigation, route }) {
       const currentUserEmail = userProfile?.email || auth.currentUser?.email || 'aventureiro@arroche.app';
       const currentUserAvatar = userProfile?.avatarUrl || userProfile?.avatar || auth.currentUser?.photoURL || null;
 
-      // Grava a inscrição do usuário no Firebase Firestore e no cache de frequência
+      // Grava a inscrição do usuário na subcoleção da trilha e no documento do próprio usuário
       if (trailId) {
         await addTrailSubscription(trailId, {
           userId: currentUserId,
@@ -85,6 +93,18 @@ export default function PagamentoTrilha({ navigation, route }) {
           totalPrice: rawTotal,
           status: 'confirmada',
         });
+
+        // Salva o ID da trilha diretamente no perfil do usuário no Firestore
+        if (currentUserId && currentUserId !== 'trilheiro_app') {
+          const userRef = doc(db, 'users', currentUserId);
+          await setDoc(
+            userRef,
+            {
+              enrolledTrails: arrayUnion(String(trailId)),
+            },
+            { merge: true }
+          );
+        }
       }
 
       // Inscreve a trilha na lista do usuário no contexto
@@ -119,11 +139,13 @@ export default function PagamentoTrilha({ navigation, route }) {
 
   const handleCloseAllAndStay = () => {
     setShowConfirmationModal(false);
-    // Retorna para os detalhes da trilha atualizada
-    navigation?.navigate('DetalhesEvento', {
-      eventId: event.id,
-      justSubscribed: true,
-      ticketCount,
+    // Vai para Minhas Trilhas após concluir a inscrição
+    navigation?.reset({
+      index: 1,
+      routes: [
+        { name: 'Trilhas' },
+        { name: 'MinhasTrilhas' },
+      ],
     });
   };
 
@@ -418,8 +440,6 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 24,
   },
-
-  /* Seção de Informações */
   eventInfoSection: {
     marginBottom: 20,
   },
@@ -474,8 +494,6 @@ const styles = StyleSheet.create({
     color: '#4B5563',
     fontWeight: '500',
   },
-
-  /* Formas de Pagamento */
   paymentSection: {
     marginBottom: 20,
   },
@@ -533,8 +551,6 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: colors.primary,
   },
-
-  /* Resumo dos Valores */
   summarySection: {
     marginBottom: 24,
   },
@@ -567,7 +583,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.text,
   },
-
   refundPolicyText: {
     fontSize: 11,
     lineHeight: 16,
@@ -577,8 +592,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     marginTop: 10,
   },
-
-  /* Botão Finalizar */
   finalizeButton: {
     height: 50,
     backgroundColor: colors.primary,
@@ -601,8 +614,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-
-  /* Overlays e Cards de Modais */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',

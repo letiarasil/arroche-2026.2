@@ -17,7 +17,6 @@ import { resolveTrailImage } from './trailImages.js';
 
 const TRAILS_REF = collection(db, 'trails');
 
-// Função auxiliar para evitar travamentos de rede ou regras pendentes
 const withTimeout = (promise, ms = 3000) => {
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
@@ -26,117 +25,8 @@ const withTimeout = (promise, ms = 3000) => {
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
 };
 
-// Cache local persistente em memória para permitir que a criação, edição e cancelamento
-// de eventos funcionem perfeitamente tanto online no Firestore quanto em testes/offline
 const localTrailsStore = new Map();
 
-// Inicializa trilhas base
-[
-  {
-    id: 'f1',
-    title: 'Trilha do Lemos',
-    name: 'Trilha do Lemos',
-    author: 'Raissa Mara',
-    guideName: 'Raissa Mara',
-    guideId: 'guide_raissa_mara',
-    time: '1 hr',
-    duration: '1 hr',
-    distance: '2km',
-    rating: '4.4',
-    reviews: '90',
-    difficulty: 'Fácil',
-    imageKey: 'lemos',
-    departureLocation: 'Praça José de Barros, Quixadá-CE',
-    date: '27/10/2026',
-    departureTime: '07:00 AM',
-    capacity: 12,
-    totalSpots: 12,
-    remainingSpots: 10,
-    price: 10.0,
-    formattedPrice: 'R$ 10,00',
-    isActive: true,
-    status: 'ativa',
-  },
-  {
-    id: 'f2',
-    title: 'Pedra do Cruzeiro',
-    name: 'Pedra do Cruzeiro',
-    author: 'Ana Meireles',
-    guideName: 'Ana Meireles',
-    guideId: 'guide_ana_meireles',
-    time: '10 min',
-    duration: '10 min',
-    distance: '300m',
-    rating: '4.5',
-    reviews: '200',
-    difficulty: 'Fácil',
-    imageKey: 'pedra-cruzeiro',
-    departureLocation: 'Acesso pelo Centro, Quixadá-CE',
-    date: '28/10/2026',
-    departureTime: '06:30 AM',
-    capacity: 15,
-    totalSpots: 15,
-    remainingSpots: 12,
-    price: 15.0,
-    formattedPrice: 'R$ 15,00',
-    isActive: true,
-    status: 'ativa',
-  },
-  {
-    id: 'm1',
-    title: 'Vale Perdido',
-    name: 'Vale Perdido',
-    author: 'João Lucas',
-    guideName: 'João Lucas',
-    guideId: 'guide_joao_lucas',
-    time: '2 hr',
-    duration: '2 hr',
-    distance: '4km',
-    rating: '4.8',
-    reviews: '150',
-    difficulty: 'Médio',
-    imageKey: 'vale-perdido',
-    departureLocation: 'Entrada da Fazenda Magé',
-    date: '30/10/2026',
-    departureTime: '05:30 AM',
-    capacity: 10,
-    totalSpots: 10,
-    remainingSpots: 5,
-    price: 25.0,
-    formattedPrice: 'R$ 25,00',
-    isActive: true,
-    status: 'ativa',
-  },
-  {
-    id: 'm2',
-    title: 'Trilha da Cabeça da Bruxa',
-    name: 'Trilha da Cabeça da Bruxa',
-    author: 'Miguel Almeida',
-    guideName: 'Miguel Almeida',
-    guideId: 'guide_miguel_almeida',
-    time: '22 min',
-    duration: '22 min',
-    distance: '0,8km',
-    rating: '4.2',
-    reviews: '85',
-    difficulty: 'Médio',
-    imageKey: 'cabeca-bruxa',
-    departureLocation: 'Pé da Serra',
-    date: '02/11/2026',
-    departureTime: '07:00 AM',
-    capacity: 20,
-    totalSpots: 20,
-    remainingSpots: 14,
-    price: 20.0,
-    formattedPrice: 'R$ 20,00',
-    isActive: true,
-    status: 'ativa',
-  },
-].forEach((t) => {
-  localTrailsStore.set(t.id, normalizeTrail(t.id, t));
-});
-
-// Função auxiliar para padronizar os dados da trilha e resolver imagens
 function normalizeTrail(id, data) {
   if (!data) return null;
   const imageResolved = resolveTrailImage(
@@ -150,7 +40,102 @@ function normalizeTrail(id, data) {
   };
 }
 
-// Criar ou atualizar trilha com ID específico
+function deduplicateSubscriptions(list = []) {
+  const persistedIds = new Set();
+  const replacedLocalIds = new Set();
+
+  (list || []).forEach((item) => {
+    if (!item || item.status === 'cancelada') return;
+    if (item.id && !String(item.id).startsWith('sub_')) {
+      persistedIds.add(String(item.id));
+      if (item.localId) {
+        replacedLocalIds.add(String(item.localId));
+      }
+    }
+  });
+
+  // Primeiro passo: consolida por ID do documento/inscrição para mesclar campos locais com dados completos do Firestore
+  const byDocId = new Map();
+  (list || []).forEach((item, idx) => {
+    if (!item || item.status === 'cancelada') return;
+    const itemId = item.id ? String(item.id) : `sub_fallback_${idx}`;
+    const isLocalTemp = itemId.startsWith('sub_');
+
+    if (isLocalTemp && (replacedLocalIds.has(itemId) || persistedIds.has(itemId))) {
+      return;
+    }
+
+    if (!byDocId.has(itemId)) {
+      byDocId.set(itemId, { ...item, id: itemId });
+    } else {
+      const existing = byDocId.get(itemId);
+      const existingLocalTime = existing._localAttendanceAt || 0;
+      const candidateLocalTime = item._localAttendanceAt || 0;
+
+      const merged = {
+        ...existing,
+        ...item,
+        id: itemId,
+        name: item.name || existing.name,
+        email: item.email || existing.email,
+        userId: item.userId || existing.userId,
+        avatar: item.avatar || existing.avatar,
+        ticketCount: item.ticketCount || existing.ticketCount || 1,
+        present:
+          candidateLocalTime > existingLocalTime
+            ? Boolean(item.present)
+            : existingLocalTime > candidateLocalTime
+              ? Boolean(existing.present)
+              : Boolean(existing.present || item.present),
+        _localAttendanceAt: Math.max(existingLocalTime, candidateLocalTime),
+      };
+      byDocId.set(itemId, merged);
+    }
+  });
+
+  // Segundo passo: consolida por ID do trilheiro (userId) para impedir mais de 1 linha por conta
+  const byHiker = new Map();
+  Array.from(byDocId.values()).forEach((item) => {
+    // Ignora registros fantasmas incompletos sem nome, sem userId e sem email
+    if (!item.name && !item.userId && !item.email) return;
+
+    const hikerId = item.userId || item.uid || item.hikerId;
+    const hikerKey = hikerId ? `user_${String(hikerId).trim()}` : `sub_${item.id}`;
+
+    if (!byHiker.has(hikerKey)) {
+      byHiker.set(hikerKey, item);
+    } else {
+      const existing = byHiker.get(hikerKey);
+      const existingIsRealId = existing.id && !String(existing.id).startsWith('sub_');
+      const candidateIsRealId = item.id && !String(item.id).startsWith('sub_');
+
+      const existingLocalTime = existing._localAttendanceAt || 0;
+      const candidateLocalTime = item._localAttendanceAt || 0;
+
+      const base = candidateIsRealId && !existingIsRealId
+        ? { ...existing, ...item }
+        : { ...item, ...existing };
+
+      byHiker.set(hikerKey, {
+        ...base,
+        id: existingIsRealId ? existing.id : item.id,
+        name: item.name || existing.name,
+        email: item.email || existing.email,
+        userId: hikerId,
+        present:
+          candidateLocalTime > existingLocalTime
+            ? Boolean(item.present)
+            : existingLocalTime > candidateLocalTime
+              ? Boolean(existing.present)
+              : Boolean(existing.present || item.present),
+        _localAttendanceAt: Math.max(existingLocalTime, candidateLocalTime),
+      });
+    }
+  });
+
+  return Array.from(byHiker.values());
+}
+
 export const saveTrailWithId = async (trailId, trailData) => {
   const trailDoc = doc(db, 'trails', trailId);
   const payload = {
@@ -163,7 +148,6 @@ export const saveTrailWithId = async (trailId, trailData) => {
   return normalizeTrail(trailId, payload);
 };
 
-// Criar nova trilha com ID autogerado
 export const createTrail = async (trailData) => {
   const docRef = await addDoc(TRAILS_REF, {
     ...trailData,
@@ -173,7 +157,6 @@ export const createTrail = async (trailData) => {
   return docRef.id;
 };
 
-// Buscar todas as trilhas ativas (para a tela dos trilheiros)
 export const getActiveTrails = async () => {
   let firestoreTrails = [];
   try {
@@ -194,7 +177,6 @@ export const getActiveTrails = async () => {
     }
   }
 
-  // Mescla com trilhas ativas do cache local
   const mergedMap = new Map();
   localTrailsStore.forEach((t, id) => {
     if (t && t.isActive !== false && t.status !== 'cancelada') {
@@ -210,7 +192,6 @@ export const getActiveTrails = async () => {
   return Array.from(mergedMap.values());
 };
 
-// Buscar detalhes de uma trilha por ID
 export const getTrailById = async (trailId) => {
   if (!trailId) return null;
   try {
@@ -227,7 +208,6 @@ export const getTrailById = async (trailId) => {
   return localTrailsStore.get(trailId) || null;
 };
 
-// Buscar trilhas em lote através de um array de IDs
 export const getTrailsByIds = async (trailIds) => {
   if (!trailIds || !Array.isArray(trailIds) || trailIds.length === 0) {
     return [];
@@ -243,7 +223,6 @@ export const getTrailsByIds = async (trailIds) => {
   }
 };
 
-// Adicionar avaliação na subcoleção de uma trilha
 export const addTrailReview = async (trailId, reviewData, userSummary) => {
   const reviewsRef = collection(db, 'trails', trailId, 'reviews');
   return await addDoc(reviewsRef, {
@@ -258,7 +237,6 @@ export const addTrailReview = async (trailId, reviewData, userSummary) => {
   });
 };
 
-// Buscar avaliações de uma trilha
 export const getTrailReviews = async (trailId) => {
   try {
     const reviewsRef = collection(db, 'trails', trailId, 'reviews');
@@ -270,13 +248,6 @@ export const getTrailReviews = async (trailId) => {
   }
 };
 
-// ============================================================================
-// FUNCIONALIDADES EXCLUSIVAS DA ÁREA DO GUIA (HOME GUIA, GERENCIAMENTO E CADASTRO)
-// ============================================================================
-
-/**
- * Buscar trilhas cadastradas exclusivamente pelo guia autenticado
- */
 export const getGuideTrails = async (guideId, guideName = null) => {
   const currentUid = guideId || auth.currentUser?.uid;
   const normalizedGuideName = (guideName || '').trim().toLowerCase();
@@ -311,7 +282,6 @@ export const getGuideTrails = async (guideId, guideName = null) => {
     return matchesUid || matchesAuthor || matchesGuideName;
   };
 
-  // Mescla APENAS trilhas pertencentes exclusivamente a este guia
   const mergedMap = new Map();
   localTrailsStore.forEach((t, id) => {
     if (isTrailOwnedByGuide(t)) {
@@ -332,10 +302,6 @@ export const getGuideTrails = async (guideId, guideName = null) => {
   return Array.from(mergedMap.values());
 };
 
-/**
- * Cadastrar novo evento/trilha associado ao UID do guia
- * Salva no cache local imediatamente e sincroniza com o Firestore
- */
 export const createGuideTrail = async (guideId, trailData) => {
   const currentUid = guideId || auth.currentUser?.uid || 'guide_default';
   const title = trailData.title || trailData.name || 'Nova Trilha';
@@ -381,7 +347,6 @@ export const createGuideTrail = async (guideId, trailData) => {
   const normalized = normalizeTrail(tempId, payload);
   localTrailsStore.set(tempId, normalized);
 
-  // Tenta persistir no Cloud Firestore com timeout seguro
   try {
     const docRef = await withTimeout(
       addDoc(TRAILS_REF, {
@@ -401,28 +366,22 @@ export const createGuideTrail = async (guideId, trailData) => {
   }
 };
 
-// Cache e barramento de eventos local para inscrições
 const localSubscriptionsCache = {};
 const localSubscriptionsListeners = {};
 
 function notifyLocalSubscriptionListeners(trailId) {
   const listeners = localSubscriptionsListeners[trailId];
   if (listeners) {
-    const list = (localSubscriptionsCache[trailId] || []).filter(
-      (item) => item.status !== 'cancelada'
-    );
+    const cleaned = deduplicateSubscriptions(localSubscriptionsCache[trailId] || []);
+    localSubscriptionsCache[trailId] = cleaned;
     listeners.forEach((cb) => {
       try {
-        cb([...list]);
+        cb([...cleaned]);
       } catch (_e) {}
     });
   }
 }
 
-/**
- * Atualizar informações de uma trilha cadastrada
- * Atualiza no cache local imediatamente e sincroniza com o Firestore
- */
 export const updateGuideTrail = async (trailId, guideId, updateData) => {
   if (!trailId) throw new Error('ID da trilha é obrigatório');
   const currentUid = guideId || auth.currentUser?.uid || 'guide_default';
@@ -442,7 +401,6 @@ export const updateGuideTrail = async (trailId, guideId, updateData) => {
   const authorName = (existingData.author || '').trim().toLowerCase();
   const guideNameInTrail = (existingData.guideName || '').trim().toLowerCase();
 
-  // Verificação estrita de permissão: Guia só edita suas próprias trilhas
   const isOwner = Boolean(
     (currentUid && ownerId && ownerId === currentUid) ||
     (currentGuideName && authorName && authorName === currentGuideName) ||
@@ -487,7 +445,6 @@ export const updateGuideTrail = async (trailId, guideId, updateData) => {
   const updatedNormalized = normalizeTrail(trailId, { ...payload, id: trailId });
   localTrailsStore.set(trailId, updatedNormalized);
 
-  // Tenta sincronizar com o Firestore com timeout seguro
   try {
     await withTimeout(
       setDoc(trailRef, { ...payload, updatedAt: serverTimestamp() }, { merge: true }),
@@ -500,10 +457,6 @@ export const updateGuideTrail = async (trailId, guideId, updateData) => {
   return updatedNormalized;
 };
 
-/**
- * Cancelar evento/trilha com segurança
- * Cancela no cache local imediatamente e sincroniza com o Firestore
- */
 export const cancelGuideTrail = async (trailId, guideId, guideName = '') => {
   if (!trailId) throw new Error('ID da trilha é obrigatório');
   const currentUid = guideId || auth.currentUser?.uid || 'guide_default';
@@ -523,7 +476,6 @@ export const cancelGuideTrail = async (trailId, guideId, guideName = '') => {
   const authorName = (existingData.author || '').trim().toLowerCase();
   const guideNameInTrail = (existingData.guideName || '').trim().toLowerCase();
 
-  // Verificação estrita de permissão: Guia só cancela suas próprias trilhas
   const isOwner = Boolean(
     (currentUid && ownerId && ownerId === currentUid) ||
     (currentGuideName && authorName && authorName === currentGuideName) ||
@@ -556,9 +508,6 @@ export const cancelGuideTrail = async (trailId, guideId, guideName = '') => {
   return updatedNormalized;
 };
 
-/**
- * Buscar lista dinâmica de participantes inscritos em uma trilha
- */
 export const getTrailSubscriptions = async (trailId) => {
   if (!trailId) return [];
 
@@ -566,89 +515,138 @@ export const getTrailSubscriptions = async (trailId) => {
     const subCol = collection(db, 'trails', trailId, 'subscriptions');
     const snap = await getDocs(subCol);
     if (!snap.empty) {
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const firestoreList = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return deduplicateSubscriptions([
+        ...(localSubscriptionsCache[trailId] || []),
+        ...firestoreList,
+      ]);
     }
   } catch (err) {
     console.warn('Aviso ao buscar inscrições da trilha:', err?.message);
   }
 
-  return (localSubscriptionsCache[trailId] || []).filter(
-    (item) => item.status !== 'cancelada'
-  );
+  return deduplicateSubscriptions(localSubscriptionsCache[trailId] || []);
 };
 
-/**
- * Adicionar inscrição de participante com garantia de exibição em tempo real
- */
 export const addTrailSubscription = async (trailId, subscriberData) => {
   if (!trailId) throw new Error('ID da trilha é obrigatório');
 
-  const localId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const payload = {
-    id: localId,
-    ...subscriberData,
-    name: subscriberData.name || 'Aventureiro',
-    email: subscriberData.email || 'aventureiro@arroche.app',
-    avatar: subscriberData.avatar || null,
-    ticketCount: subscriberData.ticketCount || 1,
-    status: 'confirmada',
-    createdAt: new Date().toISOString(),
-  };
+  const hikerId = subscriberData?.userId || subscriberData?.uid || auth.currentUser?.uid || null;
 
-  // Garante que o usuário apareça imediatamente na Lista de Frequência do Guia
-  if (!localSubscriptionsCache[trailId]) {
-    localSubscriptionsCache[trailId] = [];
+  // 1. Verifica no cache local se o trilheiro já tem inscrição ativa nesta trilha
+  const cachedList = deduplicateSubscriptions(localSubscriptionsCache[trailId] || []);
+  if (hikerId) {
+    const alreadyInCache = cachedList.find(
+      (item) => String(item.userId || item.uid || '') === String(hikerId) && item.status !== 'cancelada'
+    );
+    if (alreadyInCache) {
+      return alreadyInCache;
+    }
   }
-  localSubscriptionsCache[trailId].unshift(payload);
-  notifyLocalSubscriptionListeners(trailId);
 
-  // Tenta persistir no Cloud Firestore se disponível
+  // 2. Verifica no Firestore se já existe inscrição ativa desse trilheiro nesta trilha
   try {
     const subCol = collection(db, 'trails', trailId, 'subscriptions');
+    if (hikerId) {
+      const q = query(subCol, where('userId', '==', hikerId));
+      const existingSnap = await getDocs(q);
+      const activeDoc = existingSnap.docs.find((d) => d.data()?.status !== 'cancelada');
+      if (activeDoc) {
+        const existingSub = { id: activeDoc.id, ...activeDoc.data() };
+        localSubscriptionsCache[trailId] = deduplicateSubscriptions([
+          existingSub,
+          ...cachedList,
+        ]);
+        notifyLocalSubscriptionListeners(trailId);
+        return existingSub;
+      }
+    }
+
+    const localId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const basePayload = {
+      ...subscriberData,
+      userId: hikerId,
+      localId,
+      name: subscriberData.name || 'Aventureiro',
+      email: subscriberData.email || 'aventureiro@arroche.app',
+      avatar: subscriberData.avatar || null,
+      ticketCount: subscriberData.ticketCount || 1,
+      present: Boolean(subscriberData.present),
+      status: 'confirmada',
+    };
+
+    const tempPayload = {
+      ...basePayload,
+      id: localId,
+      createdAt: new Date().toISOString(),
+    };
+
+    localSubscriptionsCache[trailId] = deduplicateSubscriptions([tempPayload, ...cachedList]);
+    notifyLocalSubscriptionListeners(trailId);
+
     const docRef = await addDoc(subCol, {
-      ...payload,
+      ...basePayload,
       createdAt: serverTimestamp(),
     });
-    payload.id = docRef.id;
 
-    // Atualiza a contagem de vagas preenchidas na trilha
+    const persistedItem = {
+      ...tempPayload,
+      id: docRef.id,
+    };
+
+    localSubscriptionsCache[trailId] = deduplicateSubscriptions([
+      persistedItem,
+      ...(localSubscriptionsCache[trailId] || []).filter((item) => item.id !== localId),
+    ]);
+    notifyLocalSubscriptionListeners(trailId);
+
     const trailRef = doc(db, 'trails', trailId);
     const snap = await getDoc(trailRef);
     if (snap.exists()) {
       const currentFilled = snap.data().filledSpots || 0;
       await updateDoc(trailRef, {
-        filledSpots: currentFilled + (payload.ticketCount || 1),
+        filledSpots: currentFilled + (basePayload.ticketCount || 1),
         updatedAt: serverTimestamp(),
       });
     }
-  } catch (firestoreErr) {
-    console.warn('Inscrição registrada em cache local para Lista de Frequência:', firestoreErr?.message);
-  }
 
-  return payload;
+    return persistedItem;
+  } catch (firestoreErr) {
+    const localId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const fallbackPayload = {
+      ...subscriberData,
+      userId: hikerId,
+      id: localId,
+      localId,
+      name: subscriberData.name || 'Aventureiro',
+      email: subscriberData.email || 'aventureiro@arroche.app',
+      avatar: subscriberData.avatar || null,
+      ticketCount: subscriberData.ticketCount || 1,
+      present: Boolean(subscriberData.present),
+      status: 'confirmada',
+      createdAt: new Date().toISOString(),
+    };
+
+    localSubscriptionsCache[trailId] = deduplicateSubscriptions([fallbackPayload, ...cachedList]);
+    notifyLocalSubscriptionListeners(trailId);
+    console.warn('Inscrição registrada em cache local para Lista de Frequência:', firestoreErr?.message);
+    return fallbackPayload;
+  }
 };
 
-/**
- * Escutar inscrições de uma trilha em tempo real (Lista de Frequência do Guia)
- */
 export const listenTrailSubscriptions = (trailId, onUpdate, onError) => {
   if (!trailId) return () => {};
 
   if (!localSubscriptionsListeners[trailId]) {
     localSubscriptionsListeners[trailId] = new Set();
   }
-  const localCallback = (subs) => onUpdate?.(subs);
+  const localCallback = (subs) => onUpdate?.(deduplicateSubscriptions(subs));
   localSubscriptionsListeners[trailId].add(localCallback);
 
-  // Emite imediatamente o que já estiver em cache
   if (localSubscriptionsCache[trailId] && localSubscriptionsCache[trailId].length > 0) {
-    const activeSubs = localSubscriptionsCache[trailId].filter(
-      (item) => item.status !== 'cancelada'
-    );
-    onUpdate?.(activeSubs);
+    onUpdate?.(deduplicateSubscriptions(localSubscriptionsCache[trailId]));
   }
 
-  // Registra listener no Firestore
   try {
     const subCol = collection(db, 'trails', trailId, 'subscriptions');
     const unsubscribeFirestore = onSnapshot(
@@ -658,26 +656,18 @@ export const listenTrailSubscriptions = (trailId, onUpdate, onError) => {
           .map((d) => ({ id: d.id, ...d.data() }))
           .filter((item) => item.status !== 'cancelada');
 
-        // Combina inscrições locais e do Firestore sem duplicatas
-        const mergedMap = new Map();
-        (localSubscriptionsCache[trailId] || []).forEach((item) => {
-          if (item.status !== 'cancelada') mergedMap.set(item.id, item);
-        });
-        firestoreList.forEach((item) => {
-          mergedMap.set(item.id, item);
-        });
+        const finalList = deduplicateSubscriptions([
+          ...(localSubscriptionsCache[trailId] || []),
+          ...firestoreList,
+        ]);
 
-        const finalList = Array.from(mergedMap.values());
         localSubscriptionsCache[trailId] = finalList;
         onUpdate?.(finalList);
       },
       (err) => {
         console.warn('Aviso na sincronização de inscrições em tempo real:', err?.message);
         if (localSubscriptionsCache[trailId] && localSubscriptionsCache[trailId].length > 0) {
-          const activeSubs = localSubscriptionsCache[trailId].filter(
-            (item) => item.status !== 'cancelada'
-          );
-          onUpdate?.(activeSubs);
+          onUpdate?.(deduplicateSubscriptions(localSubscriptionsCache[trailId]));
         } else {
           onError?.(err);
         }
@@ -695,9 +685,6 @@ export const listenTrailSubscriptions = (trailId, onUpdate, onError) => {
   }
 };
 
-/**
- * Cancelar inscrição de um participante e devolver as vagas
- */
 export const cancelTrailSubscription = async (trailId, userId, ticketCount = 1) => {
   if (!trailId) throw new Error('ID da trilha é obrigatório');
   const currentUid = userId || auth.currentUser?.uid;
@@ -714,7 +701,13 @@ export const cancelTrailSubscription = async (trailId, userId, ticketCount = 1) 
       });
     }
 
-    // Devolve vagas na trilha
+    if (localSubscriptionsCache[trailId]) {
+      localSubscriptionsCache[trailId] = localSubscriptionsCache[trailId].filter(
+        (item) => item.userId !== currentUid
+      );
+      notifyLocalSubscriptionListeners(trailId);
+    }
+
     const trailRef = doc(db, 'trails', trailId);
     const trailSnap = await getDoc(trailRef);
     if (trailSnap.exists()) {
@@ -731,39 +724,39 @@ export const cancelTrailSubscription = async (trailId, userId, ticketCount = 1) 
   }
 };
 
-/**
- * Alternar presença de um participante na Lista de Frequência pelo Guia
- */
 export const toggleParticipantAttendance = async (trailId, subscriptionId, isPresent) => {
   if (!trailId || !subscriptionId) return;
 
-  // 1. Atualiza imediatamente no cache local e notifica ouvintes
+  const targetId = String(subscriptionId);
+  const localStamp = Date.now();
+
   if (localSubscriptionsCache[trailId]) {
     localSubscriptionsCache[trailId] = localSubscriptionsCache[trailId].map((sub) =>
-      sub.id === subscriptionId ? { ...sub, present: isPresent } : sub
+      String(sub.id) === targetId || String(sub.localId) === targetId
+        ? { ...sub, present: Boolean(isPresent), _localAttendanceAt: localStamp }
+        : sub
     );
     notifyLocalSubscriptionListeners(trailId);
   }
 
-  // 2. Tenta persistir no Cloud Firestore com setDoc e timeout seguro
   try {
-    const subDocRef = doc(db, 'trails', trailId, 'subscriptions', subscriptionId);
+    const subDocRef = doc(db, 'trails', trailId, 'subscriptions', targetId);
     await withTimeout(
-      setDoc(subDocRef, {
-        present: isPresent,
-        checkedAt: isPresent ? serverTimestamp() : null,
-      }, { merge: true }),
+      setDoc(
+        subDocRef,
+        {
+          present: Boolean(isPresent),
+          checkedAt: isPresent ? serverTimestamp() : null,
+        },
+        { merge: true }
+      ),
       3000
     );
   } catch (err) {
     console.warn('Aviso ao sincronizar presença no Firestore (mantido localmente):', err?.message);
-    // Não lança exceção para a UI, garantindo que o status de presença não seja revertido
   }
 };
 
-/**
- * Buscar perguntas e comentários do quadro de avisos
- */
 export const getTrailQuestions = async (trailId) => {
   if (!trailId) return [];
 
@@ -780,9 +773,6 @@ export const getTrailQuestions = async (trailId) => {
   return [];
 };
 
-/**
- * Adicionar pergunta ou aviso ao quadro da trilha
- */
 export const addTrailQuestion = async (trailId, messageData) => {
   if (!trailId) throw new Error('ID da trilha é obrigatório');
 
@@ -800,9 +790,6 @@ export const addTrailQuestion = async (trailId, messageData) => {
   return { id: docRef.id, ...payload };
 };
 
-/**
- * Buscar histórico de trilhas concluídas do guia autenticado
- */
 export const getGuideHistory = async (guideId) => {
   const currentUid = guideId || auth.currentUser?.uid;
   let firestoreHistory = [];

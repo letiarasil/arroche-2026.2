@@ -21,6 +21,7 @@ import { auth } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { createGuideTrail } from '../services/trailService';
 import { uploadImageToStorage } from '../services/storageService';
+import { checkGuideHasBankingInfo } from '../services/guideService';
 import MenuGuia from '../components/MenuGuia';
 
 export default function CadastrarEvento({ navigation }) {
@@ -28,7 +29,7 @@ export default function CadastrarEvento({ navigation }) {
   const guideUid = auth.currentUser?.uid || user?.uid || user?.id || 'guide_default';
   const guideName = guideProfile?.name || userProfile?.name || 'Guia profissional';
 
-  // Proteção de rota e regra de negócio: apenas Guias podem cadastrar eventos
+  // Proteção de rota e regra de negócio: apenas Guias com dados bancários/Cadastur podem cadastrar eventos
   useEffect(() => {
     if (!authLoading && !isGuide) {
       Alert.alert(
@@ -47,8 +48,22 @@ export default function CadastrarEvento({ navigation }) {
           },
         ]
       );
+      return;
     }
-  }, [authLoading, isGuide, navigation]);
+
+    // Verifica se os dados bancários e Cadastur já foram preenchidos
+    async function verifyBanking() {
+      if (authLoading || !isGuide) return;
+      try {
+        const hasBanking = await checkGuideHasBankingInfo(guideUid, guideProfile);
+        if (!hasBanking) {
+          navigation?.replace('DadosBancariosCadastur', { returnTo: 'CadastrarEvento' });
+        }
+      } catch (_e) {}
+    }
+
+    verifyBanking();
+  }, [authLoading, isGuide, guideUid, guideProfile, navigation]);
 
   // Estados dos campos do formulário
   const [coverImageUri, setCoverImageUri] = useState(null);

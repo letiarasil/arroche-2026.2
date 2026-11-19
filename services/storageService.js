@@ -1,45 +1,103 @@
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from './firebase';
 
-/**
- * Função auxiliar para garantir que o upload não trave a aplicação
- * caso o Firebase Storage esteja offline, bloqueado por regras ou lento.
- */
-const withStorageTimeout = (promise, ms = 2500) => {
+const withTimeout = (promise, ms, label) => {
   let timer;
   const timeoutPromise = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error('Storage timeout')), ms);
+    timer = setTimeout(() => reject(new Error(`${label} excedeu ${ms}ms`)), ms);
   });
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
 };
 
+function uriToBlob(uri) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = () => {
+      if (!xhr.response) {
+        reject(new Error('Resposta vazia ao ler o arquivo local'));
+        return;
+      }
+      resolve(xhr.response);
+    };
+    xhr.onerror = () => reject(new Error('Falha ao ler arquivo local para Blob'));
+    xhr.responseType = 'blob';
+    xhr.open('GET', uri, true);
+    xhr.send(null);
+  });
+}
+
 /**
- * Faz upload de uma imagem do dispositivo para o Firebase Storage
- * e retorna a URL permanente pública gerada.
- * Se houver lentidão, erro de regras ou rede, retorna imediatamente o URI local como fallback seguro.
+ * Faz upload de uma imagem local para o Firebase Storage e retorna a URL pública (https://).
+ * Lança erro em caso de falha ou timeout, impedindo que caminhos locais (file://) sejam salvos.
  *
- * @param {string} localUri - Caminho do arquivo no dispositivo (file://... ou content://...)
- * @param {string} destinationPath - Caminho no Storage (ex: 'trails/{uid}/cover_{timestamp}.jpg')
- * @returns {Promise<string>} Download URL do Firebase Storage ou o URI local
+ * @param {string | null | undefined} localUri
+ * @param {string} destinationPath
+ * @returns {Promise<string | null>}
  */
 export async function uploadImageToStorage(localUri, destinationPath) {
-  if (!localUri) return null;
+  if (!localUri) {
+    return null;
+  }
 
-  // Se já for URL web externa (http ou https), não precisa fazer upload
+  if (typeof localUri !== 'string') {
+    throw new Error('URI de imagem inválida');
+  }
+
+  // Se já for uma URL pública HTTP/HTTPS, não precisa fazer novo upload
   if (localUri.startsWith('http://') || localUri.startsWith('https://')) {
     return localUri;
   }
 
-  try {
-    const response = await withStorageTimeout(fetch(localUri), 2500);
-    const blob = await withStorageTimeout(response.blob(), 2500);
-    const storageRef = ref(storage, destinationPath);
+  if (!destinationPath) {
+    throw new Error('Caminho de destino no Firebase Storage não informado');
+  }
 
-    await withStorageTimeout(uploadBytes(storageRef, blob), 3000);
-    const downloadURL = await withStorageTimeout(getDownloadURL(storageRef), 2500);
+  const blob = await withTimeout(uriToBlob(localUri), 10000, 'Leitura da imagem');
+
+  if (typeof blob.size === 'number' && blob.size === 0) {
+    if (blob && typeof blob.close === 'function') {
+      blob.close();
+    }
+    throw new Error('O arquivo de imagem selecionado está vazio (0 bytes)');
+  }
+
+  try {
+    const storageRef = ref(storage, destinationPath);
+    const metadata = {
+      contentType:
+        typeof blob.type === 'string' && blob.type.startsWith('image/')
+          ? blob.type
+          : 'image/jpeg',
+    };
+
+    await withTimeout(
+      uploadBytes(storageRef, blob, metadata),
+      20000,
+      'Upload no Firebase Storage'
+    );
+
+    const downloadURL = await withTimeout(
+      getDownloadURL(storageRef),
+      10000,
+      'Obtenção da URL pública'
+    );
+
+    if (!downloadURL || !downloadURL.startsWith('https://')) {
+      throw new Error('URL pública inválida retornada pelo Firebase Storage');
+    }
+
     return downloadURL;
   } catch (error) {
-    console.warn('Aviso: Falha ou tempo limite no upload para o Storage, utilizando URI local como fallback:', error?.message || error);
-    return localUri;
+    console.error('Erro no uploadImageToStorage:', {
+      code: error?.code,
+      message: error?.message,
+      serverResponse: error?.customData?.serverResponse,
+      destinationPath,
+    });
+    throw error;
+  } finally {
+    if (blob && typeof blob.close === 'function') {
+      blob.close();
+    }
   }
 }

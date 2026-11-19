@@ -11,19 +11,24 @@ import Guias from "../screen/Guias";
 import Salvos from "../screen/Salvos";
 import Perfil from "../screen/Perfil";
 import PerfilGuia from "../screen/PerfilGuia";
+import Dicas from "../screen/Dicas";
+import DadosPessoais from "../screen/DadosPessoais";
+import ConfiguracaoNotificacao from "../screen/ConfiguracaoNotificacao";
+import Ajuda from "../screen/Ajuda";
+import Sobre from "../screen/Sobre";
 
 import CreatePassword from "../screen/CreatePassword";
 import AccountCreated from "../screen/AccountCreated";
 import Login from "../screen/Login";
 import LoginEmail from "../screen/LoginEmail";
 
-const Stack = createNativeStackNavigator() 
+const Stack = createNativeStackNavigator();
 
 function RootStack() {
     const { isLoggedIn } = useAuth();
 
-    return(
-        <Stack.Navigator screenOptions={{ headerShown: false, }}>
+    return (
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
             {isLoggedIn ? (
                 // Telas para usuários logados
                 <>
@@ -32,8 +37,13 @@ function RootStack() {
                     <Stack.Screen name="PagamentoTrilha" component={PagamentoTrilha} />
                     <Stack.Screen name="Guias" component={Guias} />
                     <Stack.Screen name="PerfilGuia" component={PerfilGuia} />
+                    <Stack.Screen name="Dicas" component={Dicas} />
                     <Stack.Screen name="Salvos" component={Salvos} />
                     <Stack.Screen name="Perfil" component={Perfil} />
+                    <Stack.Screen name="DadosPessoais" component={DadosPessoais} />
+                    <Stack.Screen name="ConfiguracaoNotificacao" component={ConfiguracaoNotificacao} />
+                    <Stack.Screen name="Ajuda" component={Ajuda} />
+                    <Stack.Screen name="Sobre" component={Sobre} />
                 </>
             ) : (
                 // Telas para usuários não logados (fluxo de autenticação)
@@ -48,7 +58,7 @@ function RootStack() {
                 </>
             )}
         </Stack.Navigator>
-    )
+    );
 }
 
 export default RootStack;

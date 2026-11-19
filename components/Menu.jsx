@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { Mountain } from 'lucide-react-native';
+import { Mountain, Lightbulb } from 'lucide-react-native';
 import { colors } from '../constants/colors';
 import { VazadoIcon } from './icons/VazadoIcon';
 
@@ -9,7 +9,7 @@ const Menu = ({ activeTab, navigation }) => {
   const tabs = [
     { name: 'Trilhas', route: 'Trilhas', iconType: 'LucideMountain' },
     { name: 'Guias', route: 'Guias', iconType: 'Vazado' },
-    { name: 'Salvos', route: 'Salvos', iconType: 'Feather', iconName: 'bookmark' },
+    { name: 'Dicas', route: 'Dicas', iconType: 'LucideLightbulb' },
     { name: 'Perfil', route: 'Perfil', iconType: 'Feather', iconName: 'user' },
   ];
 
@@ -19,6 +19,8 @@ const Menu = ({ activeTab, navigation }) => {
       return <Mountain size={24} color={color} strokeWidth={2} />;
     } else if (tab.iconType === 'Vazado') {
       return <VazadoIcon size={24} color={color} />;
+    } else if (tab.iconType === 'LucideLightbulb') {
+      return <Lightbulb size={24} color={color} strokeWidth={2} />;
     } else if (tab.iconType === 'Feather') {
       return <Feather name={tab.iconName} size={24} color={color} />;
     }

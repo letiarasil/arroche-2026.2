@@ -1,24 +1,263 @@
-import { View, Text, TouchableOpacity } from 'react-native';
 import React from 'react';
-import Menu from '../components/Menu';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  StatusBar,
+  Platform,
+  Alert,
+} from 'react-native';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { colors } from '../constants/colors';
 import { useAuth } from '../contexts/AuthContext';
+import Menu from '../components/Menu';
 
 export default function Perfil({ navigation }) {
   const { logout } = useAuth();
 
+  const handleBack = () => {
+    if (navigation?.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Trilhas');
+    }
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Sair da Conta',
+      'Tem certeza que deseja encerrar sua sessão?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Sair', style: 'destructive', onPress: logout },
+      ]
+    );
+  };
+
   return (
-    <View style={{ flex: 1, backgroundColor: '#fff' }}>
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ fontSize: 20, marginBottom: 20 }}>Perfil Screen</Text>
-        
-        <TouchableOpacity 
-          onPress={logout}
-          style={{ padding: 15, backgroundColor: '#FF3B30', borderRadius: 8 }}
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+
+      {/* Header com botão de retorno e título centralizado CONFIGURAÇÕES */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={handleBack}
+          activeOpacity={0.7}
         >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Sair (Logout)</Text>
+          <Feather name="chevron-left" size={24} color="#111827" />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>CONFIGURAÇÕES</Text>
+        <View style={styles.headerRightPlaceholder} />
       </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Lista de Opções de Configurações da Referência 3 */}
+        <View style={styles.menuList}>
+          {/* Opção 1: Dados pessoais */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            activeOpacity={0.7}
+            onPress={() => navigation?.navigate('DadosPessoais')}
+          >
+            <View style={styles.iconContainer}>
+              <MaterialCommunityIcons
+                name="file-document-outline"
+                size={24}
+                color="#111827"
+              />
+            </View>
+            <View style={styles.itemTextCol}>
+              <Text style={styles.itemTitle}>Dados pessoais</Text>
+              <Text style={styles.itemSubtitle}>
+                Minhas informações da conta
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          {/* Opção 2: Configuração de Notificação */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            activeOpacity={0.7}
+            onPress={() => navigation?.navigate('ConfiguracaoNotificacao')}
+          >
+            <View style={styles.iconContainer}>
+              <Feather name="bell" size={22} color="#111827" />
+            </View>
+            <View style={styles.itemTextCol}>
+              <Text style={styles.itemTitle}>Configuração de Notificação</Text>
+              <Text style={styles.itemSubtitle}>
+                Gerenciar minhas notificações
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          {/* Opção 3: Ajuda */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            activeOpacity={0.7}
+            onPress={() => navigation?.navigate('Ajuda')}
+          >
+            <View style={styles.iconContainer}>
+              <Feather name="help-circle" size={22} color="#111827" />
+            </View>
+            <View style={styles.itemTextCol}>
+              <Text style={styles.itemTitle}>Ajuda</Text>
+              <Text style={styles.itemSubtitle}>Suporte</Text>
+            </View>
+            <Feather name="chevron-right" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          {/* Opção 4: Sobre */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            activeOpacity={0.7}
+            onPress={() => navigation?.navigate('Sobre')}
+          >
+            <View style={styles.iconContainer}>
+              <Feather name="info" size={22} color="#111827" />
+            </View>
+            <View style={styles.itemTextCol}>
+              <Text style={styles.itemTitle}>Sobre</Text>
+            </View>
+            <Feather name="chevron-right" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Botão Sair da Conta (Logout existente preservado) */}
+        <TouchableOpacity
+          style={styles.logoutButton}
+          activeOpacity={0.7}
+          onPress={handleLogout}
+        >
+          <Feather
+            name="log-out"
+            size={20}
+            color="#EF4444"
+            style={styles.logoutIcon}
+          />
+          <Text style={styles.logoutText}>Sair</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      {/* Menu Inferior com a Aba 'Perfil' Ativa */}
       <Menu activeTab="Perfil" navigation={navigation} />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FAF9F6',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 20 : 40,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: 0.8,
+  },
+  headerRightPlaceholder: {
+    width: 36,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+  menuList: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  iconContainer: {
+    width: 32,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  itemTextCol: {
+    flex: 1,
+  },
+  itemTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  itemSubtitle: {
+    fontSize: 12.5,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginLeft: 64,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    marginTop: 28,
+    marginHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  logoutIcon: {
+    marginRight: 8,
+  },
+  logoutText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
+});

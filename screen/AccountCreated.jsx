@@ -6,29 +6,16 @@ import FooterTerms from '../components/FooterTerms';
 import { colors } from '../constants/colors';
 import { useAuth } from '../contexts/AuthContext';
 
-function AccountCreated({ navigation, route }) {
+function AccountCreated({ route }) {
   const profileType = route?.params?.profileType || 'trilheiro';
   const { enterApp, login } = useAuth();
 
   const handleGoToApp = () => {
-    const isGuideProfile = profileType === 'guia';
-
-    // Ativa a sessão do usuário no AuthContext preservando o perfil
+    // A troca de estado no AuthContext recria o Stack.Navigator com a initialRouteName correta
     if (enterApp) {
       enterApp(profileType);
     } else if (login) {
       login();
-    }
-
-    // Redireciona para a tela inicial correspondente ao perfil autenticado
-    try {
-      if (isGuideProfile) {
-        navigation?.navigate('HomeGuia');
-      } else {
-        navigation?.navigate('Trilhas');
-      }
-    } catch (_e) {
-      // Caso a navegação seja tratada automaticamente pela troca de pilha do RootStack
     }
   };
 

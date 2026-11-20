@@ -14,7 +14,7 @@ import {
   Modal,
   KeyboardAvoidingView,
 } from 'react-native';
-import { Feather, FontAwesome5 } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../constants/colors';
 import { auth } from '../services/firebase';
@@ -25,13 +25,15 @@ import { checkGuideHasBankingInfo } from '../services/guideService';
 import MenuGuia from '../components/MenuGuia';
 
 export default function CadastrarEvento({ navigation }) {
-  const { user, userProfile, guideProfile, isGuide, loading: authLoading } = useAuth();
+  const { user, userProfile, guideProfile, isLoggedIn, isGuide, loading: authLoading } = useAuth();
   const guideUid = auth.currentUser?.uid || user?.uid || user?.id || 'guide_default';
   const guideName = guideProfile?.name || userProfile?.name || 'Guia profissional';
 
-  // Proteção de rota e regra de negócio: apenas Guias com dados bancários/Cadastur podem cadastrar eventos
+  // Proteção de rota e regra de negócio: apenas Guias autenticados com dados bancários/Cadastur podem cadastrar eventos
   useEffect(() => {
-    if (!authLoading && !isGuide) {
+    if (authLoading || !isLoggedIn) return;
+
+    if (!isGuide) {
       Alert.alert(
         'Acesso Restrito',
         'Apenas guias credenciados têm permissão para acessar a área de criação de eventos.',
@@ -53,7 +55,6 @@ export default function CadastrarEvento({ navigation }) {
 
     // Verifica se os dados bancários e Cadastur já foram preenchidos
     async function verifyBanking() {
-      if (authLoading || !isGuide) return;
       try {
         const hasBanking = await checkGuideHasBankingInfo(guideUid, guideProfile);
         if (!hasBanking) {
@@ -63,7 +64,7 @@ export default function CadastrarEvento({ navigation }) {
     }
 
     verifyBanking();
-  }, [authLoading, isGuide, guideUid, guideProfile, navigation]);
+  }, [authLoading, isLoggedIn, isGuide, guideUid, guideProfile, navigation]);
 
   // Estados dos campos do formulário
   const [coverImageUri, setCoverImageUri] = useState(null);
@@ -152,21 +153,17 @@ export default function CadastrarEvento({ navigation }) {
 
   // --- TRATAMENTO DOS CAMPOS NUMÉRICOS, MÁSCARAS E VALIDAÇÕES ---
 
-  // Distância: aceita somente números e decimais (ex: 1.5 ou 10)
   const handleDistanceChange = (text) => {
-    // Permite dígitos e apenas um ponto ou vírgula
     const clean = text.replace(/[^0-9.,]/g, '').replace(',', '.');
     const parts = clean.split('.');
     const formatted = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : clean;
     setDistanceKm(formatted);
   };
 
-  // Duração Horas: aceita apenas números inteiros
   const handleDurationHoursChange = (text) => {
     setDurationHours(text.replace(/\D/g, '').slice(0, 2));
   };
 
-  // Duração Minutos: aceita apenas números inteiros até 59
   const handleDurationMinutesChange = (text) => {
     const clean = text.replace(/\D/g, '').slice(0, 2);
     if (parseInt(clean, 10) > 59) {
@@ -176,12 +173,10 @@ export default function CadastrarEvento({ navigation }) {
     }
   };
 
-  // Capacidade de Pessoas: aceita somente números inteiros
   const handleCapacityChange = (text) => {
     setCapacity(text.replace(/\D/g, ''));
   };
 
-  // Valor por pessoa: aceita somente números e decimais
   const handlePriceChange = (text) => {
     const clean = text.replace(/[^0-9.,]/g, '').replace(',', '.');
     const parts = clean.split('.');
@@ -189,21 +184,20 @@ export default function CadastrarEvento({ navigation }) {
     setPrice(formatted);
   };
 
-  // Digitação manual com máscara de Data (DD/MM/AAAA) e limites de dia/mês
   const handleDateManualChange = (text) => {
     const digits = text.replace(/\D/g, '').slice(0, 8);
     let day = digits.slice(0, 2);
     let month = digits.slice(2, 4);
-    let year = digits.slice(4, 8);
+    const year = digits.slice(4, 8);
 
     if (day.length === 2) {
-      let dayNum = parseInt(day, 10);
+      const dayNum = parseInt(day, 10);
       if (dayNum > 31) day = '31';
       if (dayNum === 0) day = '01';
     }
 
     if (month.length === 2) {
-      let monthNum = parseInt(month, 10);
+      const monthNum = parseInt(month, 10);
       if (monthNum > 12) month = '12';
       if (monthNum === 0) month = '01';
     }
@@ -215,19 +209,18 @@ export default function CadastrarEvento({ navigation }) {
     setDate(formatted);
   };
 
-  // Digitação manual com máscara de Horário (HH:MM) e limites de hora/minuto
   const handleTimeManualChange = (text) => {
     const digits = text.replace(/\D/g, '').slice(0, 4);
     let hours = digits.slice(0, 2);
     let mins = digits.slice(2, 4);
 
     if (hours.length === 2) {
-      let hNum = parseInt(hours, 10);
+      const hNum = parseInt(hours, 10);
       if (hNum > 23) hours = '23';
     }
 
     if (mins.length === 2) {
-      let mNum = parseInt(mins, 10);
+      const mNum = parseInt(mins, 10);
       if (mNum > 59) mins = '59';
     }
 
@@ -239,7 +232,6 @@ export default function CadastrarEvento({ navigation }) {
 
   // --- SELETORES INTERATIVOS DE DATA E HORÁRIO ---
 
-  // Gera dias do mês para o seletor visual de data
   const renderDatePickerOptions = () => {
     const today = new Date();
     const days = [];
@@ -250,7 +242,7 @@ export default function CadastrarEvento({ navigation }) {
       const monthStr = String(d.getMonth() + 1).padStart(2, '0');
       const yearStr = d.getFullYear();
       const formatted = `${dayStr}/${monthStr}/${yearStr}`;
-      
+
       const weekday = d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
       days.push({ formatted, label: `${weekday}, ${dayStr}/${monthStr}` });
     }
@@ -283,7 +275,6 @@ export default function CadastrarEvento({ navigation }) {
     );
   };
 
-  // Horários comuns para o seletor visual de horário
   const renderTimePickerOptions = () => {
     const times = [
       '05:00', '05:30', '06:00', '06:30', '07:00', '07:30',
@@ -323,7 +314,6 @@ export default function CadastrarEvento({ navigation }) {
   const handleCadastrar = async () => {
     if (isSaving) return;
 
-    // 1. Validação de autenticação
     if (!guideUid) {
       Alert.alert(
         'Sessão expirada',
@@ -332,7 +322,6 @@ export default function CadastrarEvento({ navigation }) {
       return;
     }
 
-    // 2. Validações dos campos obrigatórios
     if (!coverImageUri) {
       Alert.alert('Foto Obrigatória', 'Por favor, selecione uma foto de capa para a trilha.');
       return;
@@ -353,7 +342,6 @@ export default function CadastrarEvento({ navigation }) {
       return;
     }
 
-    // Validação estrita de formato e valores de Data
     const partsDate = date.trim().split('/');
     if (partsDate.length !== 3) {
       Alert.alert('Data Inválida', 'Informe uma data válida no formato dia/mês/ano (ex: 27/10/2026).');
@@ -374,7 +362,6 @@ export default function CadastrarEvento({ navigation }) {
       return;
     }
 
-    // Validação estrita de formato e valores de Horário
     const partsTime = departureTime.trim().split(':');
     if (partsTime.length !== 2) {
       Alert.alert('Horário Inválido', 'Informe o horário de saída no formato HH:MM (ex: 07:30).');
@@ -406,12 +393,10 @@ export default function CadastrarEvento({ navigation }) {
     setUploadProgressText('Processando foto de capa...');
 
     try {
-      // 3. Upload da Foto de Capa para o Storage
       const coverTimestamp = Date.now();
       const coverStoragePath = `trails/${guideUid}/cover_${coverTimestamp}.jpg`;
       const coverDownloadUrl = await uploadImageToStorage(coverImageUri, coverStoragePath);
 
-      // 4. Upload das Fotos Adicionais da Galeria para o Storage
       const galleryDownloadUrls = [];
       if (galleryUris.length > 0) {
         setUploadProgressText(`Processando fotos adicionais (${galleryUris.length})...`);
@@ -422,10 +407,8 @@ export default function CadastrarEvento({ navigation }) {
         }
       }
 
-      // 5. Montagem dos dados formatados da trilha
       setUploadProgressText('Salvando dados da trilha...');
 
-      // Formata duração composta (ex: 2h 30min ou 45 min)
       let formattedDuration = '';
       if (durationHours && durationMinutes) {
         formattedDuration = `${durationHours}h ${durationMinutes}min`;
@@ -437,10 +420,8 @@ export default function CadastrarEvento({ navigation }) {
         formattedDuration = '22 min';
       }
 
-      // Formata distância com unidade separada
       const formattedDistance = distanceKm ? `${distanceKm} km` : '1,5 km';
 
-      // 6. Persistência dos dados da trilha
       await createGuideTrail(guideUid, {
         title: trailName.trim(),
         name: trailName.trim(),
@@ -466,7 +447,6 @@ export default function CadastrarEvento({ navigation }) {
         status: 'ativa',
       });
 
-      // 7. Notificação de sucesso limpa e amigável
       Alert.alert(
         'Sucesso!',
         'Sua trilha foi cadastrada com sucesso!',
@@ -491,7 +471,7 @@ export default function CadastrarEvento({ navigation }) {
     }
   };
 
-  if (authLoading || !isGuide) {
+  if (authLoading || !isLoggedIn || !isGuide) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -529,10 +509,8 @@ export default function CadastrarEvento({ navigation }) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* SEÇÃO 1: Detalhes da Trilha */}
           <Text style={styles.sectionTitle}>Detalhes da Trilha</Text>
 
-          {/* Foto de Capa do Dispositivo */}
           <Text style={styles.label}>Foto de Capa *</Text>
           {coverImageUri ? (
             <View style={styles.coverPreviewCard}>
@@ -566,7 +544,6 @@ export default function CadastrarEvento({ navigation }) {
             </TouchableOpacity>
           )}
 
-          {/* Nome da Trilha */}
           <Text style={styles.label}>Nome da Trilha *</Text>
           <TextInput
             style={styles.input}
@@ -576,7 +553,6 @@ export default function CadastrarEvento({ navigation }) {
             onChangeText={setTrailName}
           />
 
-          {/* Descrição */}
           <Text style={styles.label}>Descrição *</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
@@ -588,7 +564,6 @@ export default function CadastrarEvento({ navigation }) {
             numberOfLines={3}
           />
 
-          {/* Nível de Dificuldade */}
           <Text style={styles.label}>Nível de Dificuldade *</Text>
           <View style={styles.difficultyContainer}>
             {['Fácil', 'Médio', 'Difícil'].map((lvl) => (
@@ -613,7 +588,6 @@ export default function CadastrarEvento({ navigation }) {
             ))}
           </View>
 
-          {/* Local de Saída */}
           <Text style={styles.label}>Local de Saída *</Text>
           <TextInput
             style={styles.input}
@@ -623,9 +597,7 @@ export default function CadastrarEvento({ navigation }) {
             onChangeText={setDepartureLocation}
           />
 
-          {/* Linha: Data e Horário de Saída */}
           <View style={styles.rowInputs}>
-            {/* Campo Data */}
             <View style={styles.halfCol}>
               <Text style={styles.label}>Data *</Text>
               <View style={styles.inputWithIconContainer}>
@@ -648,7 +620,6 @@ export default function CadastrarEvento({ navigation }) {
               </View>
             </View>
 
-            {/* Campo Horário de Saída */}
             <View style={styles.halfCol}>
               <Text style={styles.label}>Horário de Saída *</Text>
               <View style={styles.inputWithIconContainer}>
@@ -672,9 +643,7 @@ export default function CadastrarEvento({ navigation }) {
             </View>
           </View>
 
-          {/* Linha: Distância e Duração */}
           <View style={styles.rowInputs}>
-            {/* Campo Distância (Apenas números e decimais com km fixo) */}
             <View style={styles.halfCol}>
               <Text style={styles.label}>Distância</Text>
               <View style={styles.inputWithUnitContainer}>
@@ -692,7 +661,6 @@ export default function CadastrarEvento({ navigation }) {
               </View>
             </View>
 
-            {/* Campo Duração (Apenas números separados por h e min) */}
             <View style={styles.halfCol}>
               <Text style={styles.label}>Duração</Text>
               <View style={styles.durationRowContainer}>
@@ -725,7 +693,6 @@ export default function CadastrarEvento({ navigation }) {
             </View>
           </View>
 
-          {/* Imagens Adicionais da Trilha */}
           <Text style={styles.label}>Imagens da Trilha</Text>
           <TouchableOpacity
             style={styles.uploadBox}
@@ -742,7 +709,6 @@ export default function CadastrarEvento({ navigation }) {
             </View>
           </TouchableOpacity>
 
-          {/* Grade de Pré-visualização das Imagens Adicionais com opção de remover */}
           {galleryUris.length > 0 && (
             <ScrollView
               horizontal
@@ -764,13 +730,11 @@ export default function CadastrarEvento({ navigation }) {
             </ScrollView>
           )}
 
-          {/* SEÇÃO 2: Detalhes das Inscrições */}
           <Text style={[styles.sectionTitle, { marginTop: 22 }]}>
             Detalhes das Inscrições
           </Text>
 
           <View style={styles.rowInputs}>
-            {/* Capacidade de Pessoas (Apenas inteiros) */}
             <View style={styles.halfCol}>
               <Text style={styles.label}>Capacidade de Pessoas *</Text>
               <TextInput
@@ -783,7 +747,6 @@ export default function CadastrarEvento({ navigation }) {
               />
             </View>
 
-            {/* Valor por pessoa (Apenas números com R$ fixo) */}
             <View style={styles.halfCol}>
               <Text style={styles.label}>Valor por pessoa *</Text>
               <View style={styles.inputWithCurrencyContainer}>
@@ -800,7 +763,6 @@ export default function CadastrarEvento({ navigation }) {
             </View>
           </View>
 
-          {/* Indicador de progresso do upload */}
           {isSaving && uploadProgressText ? (
             <View style={styles.progressContainer}>
               <ActivityIndicator size="small" color={colors.primary} />
@@ -808,7 +770,6 @@ export default function CadastrarEvento({ navigation }) {
             </View>
           ) : null}
 
-          {/* Botão Cadastrar Evento */}
           <TouchableOpacity
             style={[styles.submitButton, isSaving && styles.submitButtonDisabled]}
             activeOpacity={0.88}
@@ -824,10 +785,8 @@ export default function CadastrarEvento({ navigation }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Menu Inferior Fixo do Guia */}
       <MenuGuia activeTab="Trilhas" navigation={navigation} />
 
-      {/* MODAL: Seletor de Data */}
       <Modal
         visible={isDateModalVisible}
         transparent
@@ -849,7 +808,6 @@ export default function CadastrarEvento({ navigation }) {
         </View>
       </Modal>
 
-      {/* MODAL: Seletor de Horário */}
       <Modal
         visible={isTimeModalVisible}
         transparent

@@ -33,11 +33,13 @@ const TABS = [
 ];
 
 export default function HomeGuia({ navigation, route }) {
-  const { user, userProfile, guideProfile, isGuide, loading: authLoading } = useAuth();
+  const { user, userProfile, guideProfile, isLoggedIn, isGuide, loading: authLoading } = useAuth();
 
-  // Proteção de rota para guias (aguarda auth terminar de carregar)
+  // Proteção de rota para guias autenticados (aguarda auth terminar de carregar)
   useEffect(() => {
-    if (!authLoading && !isGuide) {
+    if (authLoading || !isLoggedIn) return;
+
+    if (!isGuide) {
       Alert.alert(
         'Acesso Restrito',
         'Esta área é exclusiva para guias credenciados.',
@@ -55,16 +57,14 @@ export default function HomeGuia({ navigation, route }) {
         ]
       );
     }
-  }, [authLoading, isGuide, navigation]);
+  }, [authLoading, isLoggedIn, isGuide, navigation]);
 
-  // Identificação do guia autenticado real
   const guideId = auth.currentUser?.uid || user?.uid || user?.id || 'guide_default';
   const guideName =
     guideProfile?.name ||
     userProfile?.name ||
     'Guia';
 
-  // Estados principais
   const initialTab = route?.params?.initialTab || 'cadastradas';
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -73,13 +73,13 @@ export default function HomeGuia({ navigation, route }) {
       setActiveTab(route.params.initialTab);
     }
   }, [route?.params?.initialTab]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [trails, setTrails] = useState([]);
   const [historyTrails, setHistoryTrails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Carrega as trilhas e o histórico do Firestore
   const loadGuideData = useCallback(async (isPullToRefresh = false) => {
     if (!guideId) {
       setLoading(false);
@@ -90,7 +90,6 @@ export default function HomeGuia({ navigation, route }) {
     if (!isPullToRefresh) setLoading(true);
 
     try {
-      // Busca do Cloud Firestore as trilhas vinculadas exclusivamente a este guia autenticado
       const [fetchedTrails, fetchedHistory] = await Promise.all([
         getGuideTrails(guideId, guideName),
         getGuideHistory(guideId),
@@ -106,7 +105,6 @@ export default function HomeGuia({ navigation, route }) {
     }
   }, [guideId, guideName]);
 
-  // Recarrega sempre que a tela ganha foco (útil após cadastrar/editar/cancelar)
   useEffect(() => {
     const unsubscribe = navigation?.addListener?.('focus', () => {
       loadGuideData(true);
@@ -118,13 +116,11 @@ export default function HomeGuia({ navigation, route }) {
     loadGuideData();
   }, [loadGuideData]);
 
-  // Atualiza via arrastar para baixo (Pull to Refresh)
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadGuideData(true);
   }, [loadGuideData]);
 
-  // Filtra as trilhas cadastradas pela pesquisa
   const filteredTrails = useMemo(() => {
     if (!searchQuery.trim()) return trails;
     const q = searchQuery.toLowerCase().trim();
@@ -137,7 +133,6 @@ export default function HomeGuia({ navigation, route }) {
     );
   }, [trails, searchQuery]);
 
-  // Filtra os itens do histórico pela pesquisa
   const filteredHistory = useMemo(() => {
     if (!searchQuery.trim()) return historyTrails;
     const q = searchQuery.toLowerCase().trim();
@@ -149,7 +144,6 @@ export default function HomeGuia({ navigation, route }) {
     );
   }, [historyTrails, searchQuery]);
 
-  // Abrir tela de edição dedicada
   const handleOpenEdit = (item) => {
     navigation?.navigate('EditarEventoGuia', {
       trailId: item.id,
@@ -157,7 +151,6 @@ export default function HomeGuia({ navigation, route }) {
     });
   };
 
-  // Abrir tela de gerenciamento e visualização da trilha do guia (NÃO a tela do trilheiro)
   const handleOpenDetails = (item, isHistory = false) => {
     navigation?.navigate('GerenciarTrilhaGuia', {
       trailId: item.id,
@@ -166,7 +159,6 @@ export default function HomeGuia({ navigation, route }) {
     });
   };
 
-  // Abrir tela de cadastro de evento (com verificação de Dados Bancários e Cadastur)
   const handleOpenCadastrarEvento = async () => {
     try {
       const hasBanking = await checkGuideHasBankingInfo(guideId, guideProfile);
@@ -183,7 +175,7 @@ export default function HomeGuia({ navigation, route }) {
     navigation?.navigate('CadastrarEvento');
   };
 
-  if (authLoading || !isGuide) {
+  if (authLoading || !isLoggedIn || !isGuide) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -195,10 +187,8 @@ export default function HomeGuia({ navigation, route }) {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      {/* Header Superior com Logo e Notificações */}
       <HeaderWithBell onBellPress={() => navigation?.navigate('Notificacoes')} />
 
-      {/* Barra de Pesquisa */}
       <SearchBar
         value={searchQuery}
         onChangeText={setSearchQuery}
@@ -210,7 +200,6 @@ export default function HomeGuia({ navigation, route }) {
         onFilterPress={() => {}}
       />
 
-      {/* Seletor de Abas: Cadastradas | Histórico */}
       <TabSelector
         tabs={TABS}
         activeTab={activeTab}
@@ -235,9 +224,6 @@ export default function HomeGuia({ navigation, route }) {
             />
           }
         >
-          {/* ======================================================== */}
-          {/* ABA 1: CADASTRADAS (HOME DO GUIA) */}
-          {/* ======================================================== */}
           {activeTab === 'cadastradas' && (
             <View style={styles.cadastradasContainer}>
               {filteredTrails.length === 0 ? (
@@ -278,9 +264,6 @@ export default function HomeGuia({ navigation, route }) {
             </View>
           )}
 
-          {/* ======================================================== */}
-          {/* ABA 2: HISTÓRICO */}
-          {/* ======================================================== */}
           {activeTab === 'historico' && (
             <View style={styles.historyContainer}>
               {filteredHistory.length === 0 ? (
@@ -305,7 +288,6 @@ export default function HomeGuia({ navigation, route }) {
                     activeOpacity={0.88}
                     onPress={() => handleOpenDetails(item, true)}
                   >
-                    {/* Cabeçalho do Card: Data */}
                     <View style={styles.historyCardTop}>
                       <Text style={styles.historyDateLabel}>Data:</Text>
                       <Text style={styles.historyDateValue}>
@@ -313,7 +295,6 @@ export default function HomeGuia({ navigation, route }) {
                       </Text>
                     </View>
 
-                    {/* Corpo do Card: Miniatura Circular + Informações */}
                     <View style={styles.historyCardBody}>
                       <View
                         style={[
@@ -341,12 +322,10 @@ export default function HomeGuia({ navigation, route }) {
                       </View>
                     </View>
 
-                    {/* Linha Divisória Pontilhada */}
                     <View style={styles.dashedDividerWrapper}>
                       <View style={styles.dashedDivider} />
                     </View>
 
-                    {/* Rodapé do Card: Detalhes com Chevron Verde */}
                     <View style={styles.historyCardFooter}>
                       <Text style={styles.historyDetailsText}>Detalhes</Text>
                       <Feather name="chevron-right" size={18} color="#2E7D32" />
@@ -359,7 +338,6 @@ export default function HomeGuia({ navigation, route }) {
         </ScrollView>
       )}
 
-      {/* Botão Flutuante Centralizado: + Cadastrar Evento (Exibido na aba Cadastradas) */}
       {activeTab === 'cadastradas' && (
         <View style={styles.floatingButtonWrapper} pointerEvents="box-none">
           <TouchableOpacity
@@ -372,7 +350,6 @@ export default function HomeGuia({ navigation, route }) {
         </View>
       )}
 
-      {/* Menu Inferior do Guia */}
       <MenuGuia activeTab="Trilhas" navigation={navigation} />
     </View>
   );

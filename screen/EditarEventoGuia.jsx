@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Modal,
   KeyboardAvoidingView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -25,13 +24,15 @@ import { resolveTrailImage } from '../services/trailImages';
 import MenuGuia from '../components/MenuGuia';
 
 export default function EditarEventoGuia({ navigation, route }) {
-  const { user, userProfile, guideProfile, isGuide, loading: authLoading } = useAuth();
+  const { user, userProfile, guideProfile, isLoggedIn, isGuide, loading: authLoading } = useAuth();
   const guideUid = auth.currentUser?.uid || user?.uid || user?.id || 'guide_default';
   const guideName = guideProfile?.name || userProfile?.name || 'Guia profissional';
 
-  // Proteção de rota e regra de negócio: apenas Guias podem editar eventos
+  // Proteção de rota e regra de negócio: apenas Guias autenticados podem editar eventos
   useEffect(() => {
-    if (!authLoading && !isGuide) {
+    if (authLoading || !isLoggedIn) return;
+
+    if (!isGuide) {
       Alert.alert(
         'Acesso Restrito',
         'Apenas guias credenciados têm permissão para editar eventos.',
@@ -49,7 +50,7 @@ export default function EditarEventoGuia({ navigation, route }) {
         ]
       );
     }
-  }, [authLoading, isGuide, navigation]);
+  }, [authLoading, isLoggedIn, isGuide, navigation]);
 
   const initialItem = route?.params?.item;
   const trailId = route?.params?.trailId || initialItem?.id;
@@ -71,10 +72,6 @@ export default function EditarEventoGuia({ navigation, route }) {
   const [isSaving, setIsSaving] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(!initialItem);
 
-  const [isDateModalVisible, setIsDateModalVisible] = useState(false);
-  const [isTimeModalVisible, setIsTimeModalVisible] = useState(false);
-
-  // Verificação estrita de propriedade da trilha (Guia só edita seus próprios eventos)
   const checkOwnership = (itemData) => {
     if (!itemData) return false;
     const currentUid = auth.currentUser?.uid || user?.uid || user?.id;
@@ -102,9 +99,9 @@ export default function EditarEventoGuia({ navigation, route }) {
     async function loadData() {
       if (initialItem) {
         if (!checkOwnership(initialItem)) return;
-        const rawImg = initialItem.imageUrl || 
-          (typeof initialItem.image === 'string' ? initialItem.image : initialItem.image?.uri) || 
-          initialItem.imageKey || 
+        const rawImg = initialItem.imageUrl ||
+          (typeof initialItem.image === 'string' ? initialItem.image : initialItem.image?.uri) ||
+          initialItem.imageKey ||
           initialItem.coverImage;
         if (rawImg) {
           setCoverImageUri(typeof rawImg === 'string' ? rawImg : rawImg?.uri);
@@ -129,9 +126,9 @@ export default function EditarEventoGuia({ navigation, route }) {
             setDuration(fetched.duration || '');
             setCapacity(String(fetched.capacity || fetched.totalSpots || '12'));
             setPrice(String(fetched.price || '10.00'));
-            const fetchedImg = fetched.imageUrl || 
-              (typeof fetched.image === 'string' ? fetched.image : fetched.image?.uri) || 
-              fetched.imageKey || 
+            const fetchedImg = fetched.imageUrl ||
+              (typeof fetched.image === 'string' ? fetched.image : fetched.image?.uri) ||
+              fetched.imageKey ||
               fetched.coverImage;
             if (fetchedImg) {
               setCoverImageUri(typeof fetchedImg === 'string' ? fetchedImg : fetchedImg?.uri);
@@ -164,26 +161,25 @@ export default function EditarEventoGuia({ navigation, route }) {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setCoverImageUri(result.assets[0].uri);
       }
-    } catch (err) {
+    } catch (_err) {
       Alert.alert('Erro', 'Não foi possível acessar a galeria de imagens.');
     }
   };
 
-  // Digitação manual com máscara de Data (DD/MM/AAAA) e limites de dia/mês
   const handleDateManualChange = (text) => {
     const digits = text.replace(/\D/g, '').slice(0, 8);
     let day = digits.slice(0, 2);
     let month = digits.slice(2, 4);
-    let year = digits.slice(4, 8);
+    const year = digits.slice(4, 8);
 
     if (day.length === 2) {
-      let dayNum = parseInt(day, 10);
+      const dayNum = parseInt(day, 10);
       if (dayNum > 31) day = '31';
       if (dayNum === 0) day = '01';
     }
 
     if (month.length === 2) {
-      let monthNum = parseInt(month, 10);
+      const monthNum = parseInt(month, 10);
       if (monthNum > 12) month = '12';
       if (monthNum === 0) month = '01';
     }
@@ -195,19 +191,18 @@ export default function EditarEventoGuia({ navigation, route }) {
     setDate(formatted);
   };
 
-  // Digitação manual com máscara de Horário (HH:MM) e limites de hora/minuto
   const handleTimeManualChange = (text) => {
     const digits = text.replace(/\D/g, '').slice(0, 4);
     let hours = digits.slice(0, 2);
     let mins = digits.slice(2, 4);
 
     if (hours.length === 2) {
-      let hNum = parseInt(hours, 10);
+      const hNum = parseInt(hours, 10);
       if (hNum > 23) hours = '23';
     }
 
     if (mins.length === 2) {
-      let mNum = parseInt(mins, 10);
+      const mNum = parseInt(mins, 10);
       if (mNum > 59) mins = '59';
     }
 
@@ -223,7 +218,6 @@ export default function EditarEventoGuia({ navigation, route }) {
       return;
     }
 
-    // Validação estrita de Data
     const partsDate = date.trim().split('/');
     if (partsDate.length !== 3) {
       Alert.alert('Data Inválida', 'Informe uma data válida no formato dia/mês/ano (ex: 27/10/2026).');
@@ -244,7 +238,6 @@ export default function EditarEventoGuia({ navigation, route }) {
       return;
     }
 
-    // Validação estrita de Horário
     const partsTime = departureTime.trim().split(':');
     if (partsTime.length !== 2) {
       Alert.alert('Horário Inválido', 'Informe o horário de saída no formato HH:MM (ex: 07:30).');
@@ -268,7 +261,6 @@ export default function EditarEventoGuia({ navigation, route }) {
         finalImageUrl = typeof initialItem.image === 'string' ? initialItem.image : initialItem.image?.uri;
       }
 
-      // Se a imagem for um arquivo local novo do dispositivo, faz o upload seguro para o Storage
       if (coverImageUri && !coverImageUri.startsWith('http://') && !coverImageUri.startsWith('https://')) {
         const coverPath = `trails/${guideUid}/cover_${Date.now()}.jpg`;
         finalImageUrl = await uploadImageToStorage(coverImageUri, coverPath);
@@ -314,7 +306,7 @@ export default function EditarEventoGuia({ navigation, route }) {
     }
   };
 
-  if (authLoading || !isGuide) {
+  if (authLoading || !isLoggedIn || !isGuide) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -337,7 +329,6 @@ export default function EditarEventoGuia({ navigation, route }) {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FAF9F6" />
 
-      {/* Cabeçalho */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation?.goBack()}
@@ -362,7 +353,6 @@ export default function EditarEventoGuia({ navigation, route }) {
         >
           <Text style={styles.sectionTitle}>Detalhes da Trilha</Text>
 
-          {/* Foto de Capa */}
           <Text style={styles.label}>Foto de Capa</Text>
           <TouchableOpacity
             style={styles.coverPreviewCard}
@@ -390,7 +380,6 @@ export default function EditarEventoGuia({ navigation, route }) {
             </View>
           </TouchableOpacity>
 
-          {/* Nome da Trilha */}
           <Text style={styles.label}>Nome da Trilha *</Text>
           <TextInput
             style={styles.input}
@@ -400,7 +389,6 @@ export default function EditarEventoGuia({ navigation, route }) {
             onChangeText={setTrailName}
           />
 
-          {/* Descrição */}
           <Text style={styles.label}>Descrição *</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
@@ -412,7 +400,6 @@ export default function EditarEventoGuia({ navigation, route }) {
             numberOfLines={3}
           />
 
-          {/* Nível de Dificuldade */}
           <Text style={styles.label}>Nível de Dificuldade *</Text>
           <View style={styles.difficultyContainer}>
             {['Fácil', 'Médio', 'Difícil'].map((lvl) => (
@@ -437,7 +424,6 @@ export default function EditarEventoGuia({ navigation, route }) {
             ))}
           </View>
 
-          {/* Local de Saída */}
           <Text style={styles.label}>Local de Saída *</Text>
           <TextInput
             style={styles.input}
@@ -447,7 +433,6 @@ export default function EditarEventoGuia({ navigation, route }) {
             onChangeText={setDepartureLocation}
           />
 
-          {/* Linha Data e Horário */}
           <View style={styles.rowInputs}>
             <View style={styles.halfCol}>
               <Text style={styles.label}>Data *</Text>
@@ -476,7 +461,6 @@ export default function EditarEventoGuia({ navigation, route }) {
             </View>
           </View>
 
-          {/* Linha Distância e Duração */}
           <View style={styles.rowInputs}>
             <View style={styles.halfCol}>
               <Text style={styles.label}>Distância</Text>
@@ -510,7 +494,6 @@ export default function EditarEventoGuia({ navigation, route }) {
             </View>
           </View>
 
-          {/* SEÇÃO 2: Detalhes das Inscrições */}
           <Text style={[styles.sectionTitle, { marginTop: 22 }]}>
             Detalhes das Inscrições
           </Text>
@@ -547,7 +530,6 @@ export default function EditarEventoGuia({ navigation, route }) {
             </View>
           </View>
 
-          {/* Botão Salvar Alterações */}
           <TouchableOpacity
             style={[styles.submitButton, isSaving && styles.submitButtonDisabled]}
             activeOpacity={0.88}

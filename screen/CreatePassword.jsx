@@ -16,7 +16,7 @@ import StepHeader from '../components/StepHeader';
 import ButtonContinue from '../components/ButtonContinue';
 import FooterTerms from '../components/FooterTerms';
 import { colors } from '../constants/colors';
-import { mockDatabase, enrichRegisteredGuideUser } from '../constants/mockAuth';
+import { mockDatabase } from '../constants/mockAuth';
 import { useAuth } from '../contexts/AuthContext';
 
 function CreatePassword({ navigation, route }) {
@@ -29,7 +29,7 @@ function CreatePassword({ navigation, route }) {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Email recebido das etapas anteriores (caso necessário no fluxo)
+  // Email e perfil recebidos das etapas anteriores
   const userEmail = route?.params?.email || '';
   const profileType = route?.params?.profileType || 'trilheiro';
 
@@ -79,58 +79,56 @@ function CreatePassword({ navigation, route }) {
     setIsLoading(true);
     setErrorMessage('');
 
+    const cleanEmail = userEmail.trim();
+    const cleanName = name.trim();
+    const cleanCpf = cpf.replace(/\D/g, '');
+    const role = profileType === 'guia' ? 'guide' : 'hiker';
+
     try {
       if (startRegistration) {
         startRegistration();
       }
 
-      // Conecta com o Firebase Auth e cria o perfil no Firestore
+      // Cria a conta no Firebase Authentication e salva o perfil no Firestore
       if (signUp) {
-        const role = profileType === 'guia' ? 'guide' : 'hiker';
-        await signUp(userEmail.trim(), password, name.trim(), role, {
-          cpf: cpf.replace(/\D/g, ''),
+        await signUp(cleanEmail, password, cleanName, role, {
+          cpf: cleanCpf,
           profileType,
         });
       }
 
-      if (profileType === 'guia') {
-        enrichRegisteredGuideUser({
-          id: `g-${Date.now()}`,
-          name: name.trim(),
-          email: userEmail.trim(),
-          cpf,
-        });
-      }
-
-      // Direciona para a tela de conta criada com sucesso
       navigation?.navigate('AccountCreated', {
-        email: userEmail,
-        name,
+        email: cleanEmail,
+        name: cleanName,
         cpf,
         profileType,
       });
     } catch (error) {
       console.warn('Erro ao criar conta no Firebase:', error);
+
       if (error?.code === 'auth/email-already-in-use') {
         setErrorMessage('Este e-mail já está cadastrado em outra conta.');
       } else if (error?.code === 'auth/invalid-email') {
         setErrorMessage('O formato do e-mail é inválido.');
       } else if (error?.code === 'auth/weak-password') {
         setErrorMessage('A senha informada é muito fraca.');
+      } else if (error?.code === 'auth/network-request-failed') {
+        setErrorMessage('Sem conexão com a internet. Verifique sua rede e tente novamente.');
       } else {
-        // Fallback para modo offline / testes em desenvolvimento
+        // Fallback local caso o Firebase não esteja disponível no ambiente de teste
         mockDatabase.registeredUser = {
-          email: userEmail,
+          email: cleanEmail,
           password,
-          name,
-          cpf,
-        profileType,
+          name: cleanName,
+          cpf: cleanCpf,
+          role,
+          profileType,
         };
         navigation?.navigate('AccountCreated', {
-          email: userEmail,
-          name,
+          email: cleanEmail,
+          name: cleanName,
           cpf,
-        profileType,
+          profileType,
         });
       }
     } finally {
@@ -250,7 +248,6 @@ function CreatePassword({ navigation, route }) {
 
             {/* Requisitos da Senha */}
             <View style={styles.requirementsContainer}>
-              {/* Mínimo de 6 caracteres */}
               <View style={styles.requirementRow}>
                 <View style={[styles.requirementIcon, hasMinLength && styles.requirementIconActive]}>
                   {hasMinLength ? (
@@ -264,7 +261,6 @@ function CreatePassword({ navigation, route }) {
                 </Text>
               </View>
 
-              {/* Um número */}
               <View style={styles.requirementRow}>
                 <View style={[styles.requirementIcon, hasNumber && styles.requirementIconActive]}>
                   {hasNumber ? (
@@ -278,7 +274,6 @@ function CreatePassword({ navigation, route }) {
                 </Text>
               </View>
 
-              {/* Um símbolo */}
               <View style={styles.requirementRow}>
                 <View style={[styles.requirementIcon, hasSymbol && styles.requirementIconActive]}>
                   {hasSymbol ? (

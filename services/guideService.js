@@ -1,15 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from './firebase';
-import { 
+import {
   collection,
-  doc, 
-  setDoc, 
-  getDoc, 
+  doc,
+  setDoc,
+  getDoc,
   getDocs,
   updateDoc,
   query,
   where,
-  serverTimestamp 
+  serverTimestamp,
 } from 'firebase/firestore';
 import { resolveTrailImage } from './trailImages';
 
@@ -35,9 +35,13 @@ function normalizeGuideData(id, data) {
     data.account
   );
 
+  const resolvedName = data.displayName || data.name || data.nome || data.fullName || '';
+
   return {
     ...data,
     id,
+    name: resolvedName || data.name || '',
+    displayName: resolvedName || data.displayName || '',
     cadasturNumber: cleanCadastur,
     cadasturFormatted: formatCadastur(cleanCadastur),
     hasCompletedBankingInfo: hasBanking,
@@ -86,11 +90,12 @@ export const getAllGuides = async () => {
     allGuideDocs.forEach((uDoc) => {
       const uData = uDoc.data();
       const existing = guidesMap.get(uDoc.id);
+      const userName = uData.displayName || uData.name || uData.nome || 'Guia';
 
       if (!existing) {
         const newGuide = normalizeGuideData(uDoc.id, {
-          name: uData.name || 'Guia',
-          displayName: uData.name || 'Guia',
+          name: userName,
+          displayName: userName,
           role: 'Guia Profissional',
           specialties: uData.specialties || 'Trilhas • Ecoturismo • Aventura',
           bio: uData.bio || '',
@@ -103,9 +108,11 @@ export const getAllGuides = async () => {
         if (!existing.avatar && (uData.avatarUrl || uData.avatar)) {
           existing.avatar = uData.avatarUrl || uData.avatar;
         }
-        if (!existing.name && uData.name) {
-          existing.name = uData.name;
-          existing.displayName = uData.name;
+        if (!existing.name && userName) {
+          existing.name = userName;
+        }
+        if (!existing.displayName && userName) {
+          existing.displayName = userName;
         }
       }
     });
@@ -129,6 +136,24 @@ export const getGuideProfile = async (userId) => {
 
     if (snap.exists()) {
       const normalized = normalizeGuideData(snap.id, snap.data());
+
+      // Se o documento em 'guides' não tiver nome, tenta completar a partir de 'users'
+      if (!normalized.displayName && !normalized.name) {
+        try {
+          const userSnap = await getDoc(doc(db, 'users', userId));
+          if (userSnap.exists()) {
+            const uData = userSnap.data();
+            const resolvedName = uData.displayName || uData.name || uData.nome || '';
+            if (resolvedName) {
+              normalized.name = resolvedName;
+              normalized.displayName = resolvedName;
+            }
+            if (!normalized.avatar && (uData.avatarUrl || uData.avatar)) {
+              normalized.avatar = uData.avatarUrl || uData.avatar;
+            }
+          }
+        } catch (_e) {}
+      }
 
       // Sincroniza o cache local com os dados reais do Firestore
       if (normalized.hasCompletedBankingInfo) {
@@ -165,9 +190,10 @@ export const getGuideProfile = async (userId) => {
     const userSnap = await getDoc(userRef);
     if (userSnap.exists()) {
       const userData = userSnap.data();
+      const resolvedName = userData.displayName || userData.name || userData.nome || '';
       const defaultGuide = {
-        name: userData.name || 'Guia Arroche',
-        displayName: userData.name || 'Guia',
+        name: resolvedName || 'Guia Arroche',
+        displayName: resolvedName || 'Guia',
         role: 'Guia Profissional',
         specialties: 'Trilhas • Ecoturismo • Turismo de Aventura',
         bioPrefix: 'Guia cadastrado no aplicativo Arroche, ',

@@ -24,7 +24,12 @@ import UserAvatar from '../components/UserAvatar';
 
 export default function PerfilGuia({ navigation, route }) {
   const initialGuide = route?.params?.guide || null;
-  const guideId = route?.params?.guideId || initialGuide?.id;
+  const guideId =
+    route?.params?.guideId ||
+    initialGuide?.id ||
+    initialGuide?.uid ||
+    initialGuide?._id ||
+    null;
   const activeTab = route?.params?.activeTab || 'Guias';
 
   const [guide, setGuide] = useState(initialGuide);
@@ -36,6 +41,21 @@ export default function PerfilGuia({ navigation, route }) {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const mainScrollRef = useRef(null);
+
+  useEffect(() => {
+    if (initialGuide) {
+      setGuide((prev) => ({
+        ...prev,
+        ...initialGuide,
+      }));
+      if (initialGuide.availableTrails) {
+        setGuideTrails(initialGuide.availableTrails);
+      }
+      if (initialGuide.comments) {
+        setComments(initialGuide.comments);
+      }
+    }
+  }, [initialGuide]);
 
   // Carrega os dados reais do guia e suas trilhas diretamente do Firestore
   const loadGuideData = useCallback(async () => {
@@ -51,7 +71,25 @@ export default function PerfilGuia({ navigation, route }) {
       ]);
 
       if (fetchedGuide) {
-        setGuide(fetchedGuide);
+        setGuide((prev) => {
+          const resolvedName =
+            fetchedGuide.displayName ||
+            fetchedGuide.name ||
+            fetchedGuide.nome ||
+            prev?.displayName ||
+            prev?.name ||
+            prev?.nome ||
+            '';
+
+          return {
+            ...prev,
+            ...fetchedGuide,
+            displayName: resolvedName || fetchedGuide.displayName || prev?.displayName || '',
+            name: resolvedName || fetchedGuide.name || prev?.name || '',
+            avatar: fetchedGuide.avatar || prev?.avatar || null,
+          };
+        });
+
         if (fetchedGuide.comments) {
           setComments(fetchedGuide.comments);
         }
@@ -100,13 +138,13 @@ export default function PerfilGuia({ navigation, route }) {
   }, []);
 
   // Fechar tela (retorna para a listagem de guias ou tela anterior)
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (navigation?.canGoBack()) {
       navigation.goBack();
     } else {
       navigation.navigate('Guias');
     }
-  };
+  }, [navigation]);
 
   // Garante que o botão voltar nativo do Android retorne para a tela de Guias
   useEffect(() => {
@@ -121,7 +159,7 @@ export default function PerfilGuia({ navigation, route }) {
     );
 
     return () => backHandlerSubscription.remove();
-  }, [navigation]);
+  }, [handleClose]);
 
   // Alterna salvar trilha
   const toggleSave = (id) => {
@@ -160,12 +198,19 @@ export default function PerfilGuia({ navigation, route }) {
     );
   }
 
-  const guideDisplayName = guide?.displayName || guide?.name || 'Guia Arroche';
+  const guideDisplayName =
+    guide?.displayName ||
+    guide?.name ||
+    guide?.nome ||
+    guide?.fullName ||
+    'Guia Arroche';
   const guideRole = guide?.role || 'Guia Profissional';
   const guideSpecialties = guide?.specialties || 'Trilhas • Ecoturismo • Turismo de Aventura';
-  const bio = guide?.bio || guide?.bioPrefix
-    ? `${guide?.bioPrefix || ''}${guide?.bioHighlight || ''}${guide?.bioSuffix || ''}`
-    : 'Guia cadastrado no aplicativo Arroche com foco em segurança, preservação e aventura.';
+  const bio =
+    guide?.bio ||
+    (guide?.bioPrefix || guide?.bioHighlight || guide?.bioSuffix
+      ? `${guide?.bioPrefix || ''}${guide?.bioHighlight || ''}${guide?.bioSuffix || ''}`
+      : 'Guia cadastrado no aplicativo Arroche com foco em segurança, preservação e aventura.');
   const trailsCount = guideTrails.length || guide?.trailsCount || 0;
   const coverImage = guide?.coverImage || require('../assets/back-arroche.png');
 

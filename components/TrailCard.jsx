@@ -3,11 +3,28 @@ import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 
+function getCardRemainingSpots(item) {
+  if (!item) return null;
+  if (typeof item.remainingSpots === 'number') {
+    return Math.max(0, item.remainingSpots);
+  }
+  if (typeof item.vagasRestantes === 'number') {
+    return Math.max(0, item.vagasRestantes);
+  }
+  const total = item.totalSpots ?? item.capacity ?? item.vagas;
+  if (typeof total === 'number') {
+    return Math.max(0, total - (Number(item.filledSpots ?? 0) || 0));
+  }
+  return null;
+}
+
 export default function TrailCard({ item, isSaved, fullWidth = false, onToggleSave, onPressVerMais }) {
   const imageSource =
     typeof item.image === 'string'
       ? { uri: item.image }
       : item.image || { uri: 'https://via.placeholder.com/400x200' };
+
+  const spotsLeft = getCardRemainingSpots(item);
 
   return (
     <View style={[styles.card, fullWidth && styles.cardFullWidth]}>
@@ -27,7 +44,6 @@ export default function TrailCard({ item, isSaved, fullWidth = false, onToggleSa
         </TouchableOpacity>
       </View>
 
-      {/* Container interno com padding quando o card está em modo fullWidth */}
       <View style={fullWidth ? styles.cardDetailsContainer : null}>
         <View style={styles.cardMeta}>
           <Text style={styles.difficultyText}>{item.difficulty}</Text>
@@ -49,6 +65,14 @@ export default function TrailCard({ item, isSaved, fullWidth = false, onToggleSa
           {item.time || item.duration || 'N/A'} · {item.distance || 'N/A'}
         </Text>
 
+        {spotsLeft !== null && (
+          <Text style={styles.spotsText}>
+            {spotsLeft > 0
+              ? `RESTAM ${String(spotsLeft).padStart(2, '0')} VAGAS`
+              : 'VAGAS ESGOTADAS'}
+          </Text>
+        )}
+
         <TouchableOpacity
           style={styles.verMaisButton}
           activeOpacity={0.7}
@@ -67,7 +91,6 @@ const styles = StyleSheet.create({
     marginRight: 16,
     marginBottom: 16,
   },
-  // Estilo com Sombra e Card destacado para a coluna da tela de Salvos
   cardFullWidth: {
     width: '100%',
     marginRight: 0,
@@ -75,14 +98,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 12,
-    // Sombra para iOS
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
-    // Sombra para Android
     elevation: 3,
-    // Linha/Borda inferior sutil para refinar a separação
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
@@ -156,8 +176,15 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 2,
   },
+  spotsText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary || '#2e7d32',
+    marginTop: 6,
+    letterSpacing: 0.4,
+  },
   verMaisButton: {
-    marginTop: 12,
+    marginTop: 10,
     borderWidth: 1,
     borderColor: colors.primary || '#2e7d32',
     borderRadius: 20,

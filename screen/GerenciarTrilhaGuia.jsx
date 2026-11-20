@@ -143,7 +143,7 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
       setComments((prev) => [...prev, added]);
       setNewComment('');
       Keyboard.dismiss();
-    } catch (err) {
+    } catch (_err) {
       Alert.alert('Erro', 'Não foi possível enviar a mensagem no quadro.');
     } finally {
       setIsSendingComment(false);
@@ -228,7 +228,13 @@ export default function GerenciarTrilhaGuia({ navigation, route }) {
     ).values()
   );
 
-  const coverSource = resolveTrailImage(trail.coverImageKey || trail.imageKey || trail.coverImage || trail.image);
+  const coverSource = resolveTrailImage(
+    trail.imageUrl ||
+      trail.image ||
+      trail.coverImage ||
+      trail.coverImageKey ||
+      trail.imageKey
+  );
   const guideDisplayName = trail.guideName || guideProfile?.name || userProfile?.name || 'João Lucas';
   const totalCapacity = trail.capacity || trail.totalSpots || 12;
   const totalBookedSpots = uniqueSubscriptions.reduce(

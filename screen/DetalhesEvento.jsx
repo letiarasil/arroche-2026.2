@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -23,10 +23,27 @@ import UserAvatar from '../components/UserAvatar';
 import { useSubscriptions } from '../contexts/SubscriptionsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../services/firebase';
-import { getTrailById, cancelTrailSubscription } from '../services/trailService';
+import {
+  getTrailById,
+  listenTrailById,
+  cancelTrailSubscription,
+  getTrailSubscriptions,
+} from '../services/trailService';
+
+function resolveInitialRemainingSpots(item) {
+  if (!item) return 10;
+  if (typeof item.remainingSpots === 'number') {
+    return Math.max(0, item.remainingSpots);
+  }
+  if (typeof item.vagasRestantes === 'number') {
+    return Math.max(0, item.vagasRestantes);
+  }
+  const total = Number(item.totalSpots ?? item.capacity ?? item.vagas ?? 12) || 12;
+  const filled = Number(item.filledSpots ?? 0) || 0;
+  return Math.max(0, total - filled);
+}
 
 export default function DetalhesEvento({ navigation, route }) {
-  // Parâmetros passados via rota
   const routeParams = route?.params || {};
   const eventId = routeParams.eventId || routeParams.item?.id || 'f1';
   const initialItem = routeParams.item;
@@ -36,7 +53,8 @@ export default function DetalhesEvento({ navigation, route }) {
     eventId === 'hist-galinha-choca'
   );
 
-  // Carrega os dados da trilha (iniciando com os dados passados na rota e atualizando pelo Firestore)
+  const initialSpots = resolveInitialRemainingSpots(initialItem);
+
   const [event, setEvent] = useState(() => ({
     id: eventId,
     trailId: eventId,
@@ -51,7 +69,7 @@ export default function DetalhesEvento({ navigation, route }) {
     price: typeof initialItem?.price === 'number'
       ? initialItem.price
       : (parseFloat(String(initialItem?.price || '10').replace('R$', '').replace(',', '.')) || 10.0),
-    remainingSpots: initialItem?.remainingSpots ?? 10,
+    remainingSpots: initialSpots,
     totalSpots: initialItem?.totalSpots || initialItem?.capacity || 12,
     guide: {
       id: initialItem?.guideId || initialItem?.guide?.id || '',
@@ -66,30 +84,29 @@ export default function DetalhesEvento({ navigation, route }) {
     photos: initialItem?.photos || (initialItem?.image ? [{ id: 'photo-1', image: initialItem.image }] : []),
     comments: initialItem?.comments || [],
   }));
+
   const { user } = useAuth();
   const { isSubscribed: checkIsSubscribed, cancelSubscription: removeSubscription } = useSubscriptions();
 
-  // Estados funcionais da tela
   const [ticketCount, setTicketCount] = useState(1);
-  const [remainingSpots, setRemainingSpots] = useState(event.remainingSpots || 10);
+  const [reservedTicketCount, setReservedTicketCount] = useState(
+    Math.max(1, Number(initialItem?.reservedTicketCount ?? initialItem?.ticketCount ?? 1) || 1)
+  );
+  const [remainingSpots, setRemainingSpots] = useState(initialSpots);
   const [isSubscribed, setIsSubscribed] = useState(() =>
     checkIsSubscribed(eventId) || checkIsSubscribed(event?.id)
   );
 
-  // Estados dos modais
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
-  // Estados para o Quadro de Avisos / Perguntas
   const [comments, setComments] = useState(event.comments || []);
   const [newComment, setNewComment] = useState('');
 
-  // Refs e estados para ajuste do teclado
   const mainScrollRef = useRef(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  // Refs e estados para o carrossel de fotos
   const galleryScrollRef = useRef(null);
   const [galleryScrollX, setGalleryScrollX] = useState(0);
   const [galleryLayoutWidth, setGalleryLayoutWidth] = useState(0);
@@ -97,7 +114,6 @@ export default function DetalhesEvento({ navigation, route }) {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
-  // Monitora abertura e fechamento do teclado
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -123,7 +139,6 @@ export default function DetalhesEvento({ navigation, route }) {
     };
   }, []);
 
-  // Sincroniza estado de inscrição com contexto (sem auto-abrir modal de dicas)
   useEffect(() => {
     const currentlySubscribed =
       checkIsSubscribed(eventId) ||
@@ -132,57 +147,111 @@ export default function DetalhesEvento({ navigation, route }) {
     setIsSubscribed(currentlySubscribed);
   }, [eventId, event?.id, checkIsSubscribed]);
 
-  // Busca dados atualizados da trilha no Cloud Firestore
   useEffect(() => {
     let isMounted = true;
-    async function fetchFromFirestore() {
-      if (!eventId) return;
-      try {
-        const fetched = await getTrailById(eventId);
-        if (fetched && isMounted) {
-          const total = fetched.capacity || fetched.totalSpots || 12;
-          const filled = fetched.filledSpots || 0;
-          const spotsLeft = Math.max(0, total - filled);
+    async function loadUserReservedCount() {
+      const currentUid = auth.currentUser?.uid || user?.uid;
+      if (!eventId || !currentUid) return;
 
-          setEvent((prev) => ({
-            ...prev,
-            ...fetched,
-            title: fetched.title || fetched.name || prev.title,
-            description: fetched.description || prev.description,
-            departureLocation: fetched.departureLocation || prev.departureLocation,
-            date: fetched.date || prev.date,
-            departureTime: fetched.departureTime || prev.departureTime,
-            duration: fetched.duration || fetched.time || prev.duration,
-            distance: fetched.distance || prev.distance,
-            difficulty: fetched.difficulty || prev.difficulty,
-            price: typeof fetched.price === 'number'
-              ? fetched.price
-              : (parseFloat(String(fetched.price || '10').replace('R$', '').replace(',', '.')) || prev.price),
-            totalSpots: total,
-            remainingSpots: spotsLeft,
-            guide: {
-              id: fetched.guideId || prev.guide?.id,
-              name: fetched.guideName || fetched.author || prev.guide?.name,
-              role: fetched.guideRole || prev.guide?.role || 'Guia profissional',
-              avatar: fetched.guideAvatar || prev.guide?.avatar,
-            },
-            coverImage: fetched.imageUrl
-              ? { uri: fetched.imageUrl }
-              : (fetched.image || prev.coverImage),
-          }));
-          setRemainingSpots(spotsLeft);
+      try {
+        const subs = await getTrailSubscriptions(eventId);
+        const userSub = (subs || []).find(
+          (s) => String(s.userId || s.uid || '') === String(currentUid) && s.status !== 'cancelada'
+        );
+        if (userSub && isMounted) {
+          const count = Math.max(1, Number(userSub.ticketCount ?? 1) || 1);
+          setReservedTicketCount(count);
+          setIsSubscribed(true);
         }
-      } catch (err) {
-        console.warn('Aviso ao carregar detalhes do Firestore:', err?.message);
-      }
+      } catch (_e) {}
     }
-    fetchFromFirestore();
+    loadUserReservedCount();
     return () => {
       isMounted = false;
     };
+  }, [eventId, user?.uid, isSubscribed]);
+
+  const fetchFromFirestore = useCallback(async () => {
+    if (!eventId) return;
+    try {
+      const fetched = await getTrailById(eventId);
+      if (fetched) {
+        const total = Number(fetched.capacity ?? fetched.totalSpots ?? 12) || 12;
+        const filled = Number(fetched.filledSpots ?? 0) || 0;
+        const spotsLeft =
+          typeof fetched.remainingSpots === 'number'
+            ? Math.max(0, fetched.remainingSpots)
+            : typeof fetched.vagasRestantes === 'number'
+              ? Math.max(0, fetched.vagasRestantes)
+              : Math.max(0, total - filled);
+
+        setEvent((prev) => ({
+          ...prev,
+          ...fetched,
+          title: fetched.title || fetched.name || prev.title,
+          description: fetched.description || prev.description,
+          departureLocation: fetched.departureLocation || prev.departureLocation,
+          date: fetched.date || prev.date,
+          departureTime: fetched.departureTime || prev.departureTime,
+          duration: fetched.duration || fetched.time || prev.duration,
+          distance: fetched.distance || prev.distance,
+          difficulty: fetched.difficulty || prev.difficulty,
+          price: typeof fetched.price === 'number'
+            ? fetched.price
+            : (parseFloat(String(fetched.price || '10').replace('R$', '').replace(',', '.')) || prev.price),
+          totalSpots: total,
+          remainingSpots: spotsLeft,
+          guide: {
+            id: fetched.guideId || prev.guide?.id,
+            name: fetched.guideName || fetched.author || prev.guide?.name,
+            role: fetched.guideRole || prev.guide?.role || 'Guia profissional',
+            avatar: fetched.guideAvatar || prev.guide?.avatar,
+          },
+          coverImage: fetched.imageUrl
+            ? { uri: fetched.imageUrl }
+            : (fetched.image || prev.coverImage),
+        }));
+        setRemainingSpots(spotsLeft);
+        setTicketCount((prevCount) => {
+          if (spotsLeft <= 0) return 1;
+          return Math.min(prevCount, spotsLeft);
+        });
+      }
+    } catch (err) {
+      console.warn('Aviso ao carregar detalhes do Firestore:', err?.message);
+    }
   }, [eventId]);
 
-  // Trata botão voltar do dispositivo
+  useEffect(() => {
+    fetchFromFirestore();
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      fetchFromFirestore();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [navigation, fetchFromFirestore]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    const unsubTrail = listenTrailById(eventId, (updatedTrail) => {
+      if (!updatedTrail) return;
+      const spotsLeft = Math.max(0, Number(updatedTrail.remainingSpots ?? 0) || 0);
+      setEvent((prev) => ({
+        ...prev,
+        ...updatedTrail,
+        remainingSpots: spotsLeft,
+        totalSpots: updatedTrail.totalSpots || prev.totalSpots,
+      }));
+      setRemainingSpots(spotsLeft);
+      setTicketCount((prevCount) => (spotsLeft <= 0 ? 1 : Math.min(prevCount, spotsLeft)));
+    });
+
+    return () => {
+      if (typeof unsubTrail === 'function') unsubTrail();
+    };
+  }, [eventId]);
+
   useEffect(() => {
     const onBackPress = () => {
       if (navigation?.canGoBack()) {
@@ -201,7 +270,6 @@ export default function DetalhesEvento({ navigation, route }) {
     return () => backHandlerSubscription.remove();
   }, [navigation]);
 
-  // Aumentar / diminuir quantidade de vagas
   const handleDecrement = () => {
     if (ticketCount > 1) {
       setTicketCount((prev) => prev - 1);
@@ -216,7 +284,6 @@ export default function DetalhesEvento({ navigation, route }) {
     }
   };
 
-  // Abre a tela de pagamento
   const handleOpenPayment = () => {
     if (remainingSpots <= 0) {
       Alert.alert('Esgotado', 'Desculpe, não há mais vagas disponíveis para este evento.');
@@ -228,30 +295,50 @@ export default function DetalhesEvento({ navigation, route }) {
       return;
     }
 
+    setReservedTicketCount(ticketCount);
     navigation?.navigate('PagamentoTrilha', {
-      event,
+      event: {
+        ...event,
+        remainingSpots,
+      },
       ticketCount,
       totalPrice: (event.price * ticketCount).toFixed(2).replace('.', ','),
     });
   };
 
-  // Confirmar cancelamento da participação no Firestore e no app
   const handleConfirmCancellation = async () => {
     setIsCancelling(true);
+    const trailId = event.id || eventId;
+    const currentUserId = auth.currentUser?.uid || user?.uid;
+    const expectedCount = Math.max(1, Number(reservedTicketCount ?? ticketCount ?? 1) || 1);
 
     try {
-      const trailId = event.id || eventId;
-      const currentUserId = auth.currentUser?.uid || user?.uid;
+      let restoredCount = expectedCount;
+      let exactRemainingFromDb = null;
 
       if (trailId && currentUserId) {
-        await cancelTrailSubscription(trailId, currentUserId, ticketCount);
+        const result = await cancelTrailSubscription(trailId, currentUserId, expectedCount);
+        if (result && typeof result === 'object') {
+          if (typeof result.restoredTickets === 'number' && result.restoredTickets > 0) {
+            restoredCount = result.restoredTickets;
+          }
+          if (typeof result.remainingSpots === 'number') {
+            exactRemainingFromDb = result.remainingSpots;
+          }
+        }
       }
 
       removeSubscription(event.id);
       removeSubscription(eventId);
       setIsSubscribed(false);
       setShowCancelModal(false);
-      setRemainingSpots((prev) => prev + ticketCount);
+      setRemainingSpots((prev) =>
+        exactRemainingFromDb !== null
+          ? exactRemainingFromDb
+          : Math.min(event.totalSpots || prev + restoredCount, prev + restoredCount)
+      );
+      setReservedTicketCount(1);
+      setTicketCount(1);
 
       Alert.alert(
         'Inscrição Cancelada',
@@ -259,12 +346,15 @@ export default function DetalhesEvento({ navigation, route }) {
       );
     } catch (err) {
       console.warn('Erro ao cancelar participação no Firestore:', err?.message);
-      // Garante desinscrição na interface
       removeSubscription(event.id);
       removeSubscription(eventId);
       setIsSubscribed(false);
       setShowCancelModal(false);
-      setRemainingSpots((prev) => prev + ticketCount);
+      setRemainingSpots((prev) =>
+        Math.min(event.totalSpots || prev + expectedCount, prev + expectedCount)
+      );
+      setReservedTicketCount(1);
+      setTicketCount(1);
 
       Alert.alert(
         'Inscrição Cancelada',
@@ -275,7 +365,6 @@ export default function DetalhesEvento({ navigation, route }) {
     }
   };
 
-  // Envio de nova pergunta no quadro
   const handleSendComment = () => {
     const textTrimmed = newComment.trim();
     if (!textTrimmed) return;
@@ -293,7 +382,6 @@ export default function DetalhesEvento({ navigation, route }) {
     Keyboard.dismiss();
   };
 
-  // Rolagem suave do carrossel de fotos
   const handleScrollLeft = () => {
     const targetX = Math.max(0, galleryScrollX - 152);
     galleryScrollRef.current?.scrollTo({ x: targetX, animated: true });
@@ -357,7 +445,6 @@ export default function DetalhesEvento({ navigation, route }) {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* Header com Capa */}
           <View style={styles.heroContainer}>
             <Image
               source={event.coverImage}
@@ -374,9 +461,7 @@ export default function DetalhesEvento({ navigation, route }) {
             </TouchableOpacity>
           </View>
 
-          {/* Conteúdo Principal */}
           <View style={styles.cardContainer}>
-            {/* Título e Badges */}
             <View style={styles.titleRow}>
               <Text style={styles.eventTitle}>{event.title}</Text>
               {isHistory ? (
@@ -386,7 +471,6 @@ export default function DetalhesEvento({ navigation, route }) {
               ) : null}
             </View>
 
-            {/* Avaliação */}
             <View style={styles.ratingRow}>
               <FontAwesome name="star" size={13} color="#264A31" />
               <Text style={styles.ratingText}>
@@ -394,7 +478,6 @@ export default function DetalhesEvento({ navigation, route }) {
               </Text>
             </View>
 
-            {/* Guia */}
             <TouchableOpacity
               style={styles.guideRow}
               activeOpacity={0.7}
@@ -416,11 +499,9 @@ export default function DetalhesEvento({ navigation, route }) {
               </Text>
             </TouchableOpacity>
 
-            {/* Descrição */}
             <Text style={styles.sectionHeaderGreen}>Descrição</Text>
             <Text style={styles.descriptionText}>{event.description}</Text>
 
-            {/* ATALHO PARA TELA DE DICAS */}
             <TouchableOpacity
               style={styles.tipsShortcutButton}
               onPress={() =>
@@ -440,13 +521,11 @@ export default function DetalhesEvento({ navigation, route }) {
               <Feather name="chevron-right" size={18} color={colors.primary} />
             </TouchableOpacity>
 
-            {/* Local de Saída */}
             <View style={styles.departureBox}>
               <Text style={styles.departureLabel}>Local de Saída</Text>
               <Text style={styles.departureValue}>{event.departureLocation}</Text>
             </View>
 
-            {/* Grid de Informações */}
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Text style={styles.statLabel}>Data</Text>
@@ -469,7 +548,6 @@ export default function DetalhesEvento({ navigation, route }) {
               </View>
             </View>
 
-            {/* Badge de Vagas Restantes */}
             {!isHistory && (
               <View style={styles.spotsBadge}>
                 <View style={styles.overlappingAvatars}>
@@ -487,12 +565,11 @@ export default function DetalhesEvento({ navigation, route }) {
                   ))}
                 </View>
                 <Text style={styles.spotsBadgeText}>
-                  RESTAM {remainingSpots} VAGAS
+                  RESTAM {String(remainingSpots).padStart(2, '0')} VAGAS
                 </Text>
               </View>
             )}
 
-            {/* Galeria de Fotos */}
             <View style={styles.gallerySection}>
               <View style={styles.galleryCarouselWrapper}>
                 <ScrollView
@@ -553,7 +630,6 @@ export default function DetalhesEvento({ navigation, route }) {
               </View>
             </View>
 
-            {/* Quadro de Avisos / Perguntas */}
             <View style={styles.commentsSection}>
               <Text style={styles.sectionHeaderGreen}>
                 Quadro de Avisos/ Perguntas
@@ -609,7 +685,6 @@ export default function DetalhesEvento({ navigation, route }) {
               </View>
             </View>
 
-            {/* Barra de Ação Inferior */}
             {isHistory ? (
               <View style={styles.registrationBar}>
                 <TouchableOpacity
@@ -679,12 +754,10 @@ export default function DetalhesEvento({ navigation, route }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Menu Inferior */}
       {keyboardHeight === 0 && (
         <Menu activeTab="Trilhas" navigation={navigation} />
       )}
 
-      {/* Modal de Confirmação */}
       <Modal
         visible={showConfirmationModal}
         transparent
@@ -740,7 +813,6 @@ export default function DetalhesEvento({ navigation, route }) {
         </View>
       </Modal>
 
-      {/* Modal de Cancelamento */}
       <Modal
         visible={showCancelModal}
         transparent
@@ -802,8 +874,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 20,
   },
-
-  /* Hero / Header Imagem */
   heroContainer: {
     width: '100%',
     height: 270,
@@ -831,8 +901,6 @@ const styles = StyleSheet.create({
     elevation: 4,
     zIndex: 10,
   },
-
-  /* Cartão de Conteúdo */
   cardContainer: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
@@ -846,8 +914,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
-
-  /* Título e Badges */
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -891,8 +957,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
   },
-
-  /* Guia */
   guideRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -907,8 +971,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
   },
-
-  /* Descrição */
   sectionHeaderGreen: {
     fontSize: 15,
     fontWeight: 'bold',
@@ -922,8 +984,6 @@ const styles = StyleSheet.create({
     color: '#4B5563',
     fontWeight: '400',
   },
-
-  /* Atalho de Dicas */
   tipsShortcutButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -947,8 +1007,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginLeft: 10,
   },
-
-  /* Local de Saída */
   departureBox: {
     marginTop: 14,
   },
@@ -962,8 +1020,6 @@ const styles = StyleSheet.create({
     color: '#4B5563',
     marginTop: 2,
   },
-
-  /* Grid de Informações */
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -984,8 +1040,6 @@ const styles = StyleSheet.create({
     color: '#4B5563',
     fontWeight: '500',
   },
-
-  /* Vagas Restantes */
   spotsBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1013,8 +1067,6 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     letterSpacing: 0.5,
   },
-
-  /* Galeria */
   gallerySection: {
     marginTop: 16,
   },
@@ -1061,8 +1113,6 @@ const styles = StyleSheet.create({
   galleryNavButtonRight: {
     right: 8,
   },
-
-  /* Quadro de Avisos */
   commentsSection: {
     marginTop: 12,
   },
@@ -1116,8 +1166,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
-  /* Barra de Inscrição */
   registrationBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1192,8 +1240,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
   },
-
-  /* Botão Cancelar Inscrição */
   cancelSubscriptionButton: {
     height: 48,
     borderRadius: 12,
@@ -1211,8 +1257,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-
-  /* Modais */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',

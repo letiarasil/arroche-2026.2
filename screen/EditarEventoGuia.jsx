@@ -19,9 +19,13 @@ import { colors } from '../constants/colors';
 import { auth } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { updateGuideTrail, getTrailById } from '../services/trailService';
-import { uploadImageToStorage } from '../services/storageService';
+import { uploadImageToCloudinary } from '../services/cloudinaryService';
 import { resolveTrailImage } from '../services/trailImages';
 import MenuGuia from '../components/MenuGuia';
+
+function isLocalUri(value) {
+  return typeof value === 'string' && (value.startsWith('file://') || value.startsWith('content://'));
+}
 
 export default function EditarEventoGuia({ navigation, route }) {
   const { user, userProfile, guideProfile, isLoggedIn, isGuide, loading: authLoading } = useAuth();
@@ -99,7 +103,8 @@ export default function EditarEventoGuia({ navigation, route }) {
     async function loadData() {
       if (initialItem) {
         if (!checkOwnership(initialItem)) return;
-        const rawImg = initialItem.imageUrl ||
+        const rawImg =
+          initialItem.imageUrl ||
           (typeof initialItem.image === 'string' ? initialItem.image : initialItem.image?.uri) ||
           initialItem.imageKey ||
           initialItem.coverImage;
@@ -126,7 +131,8 @@ export default function EditarEventoGuia({ navigation, route }) {
             setDuration(fetched.duration || '');
             setCapacity(String(fetched.capacity || fetched.totalSpots || '12'));
             setPrice(String(fetched.price || '10.00'));
-            const fetchedImg = fetched.imageUrl ||
+            const fetchedImg =
+              fetched.imageUrl ||
               (typeof fetched.image === 'string' ? fetched.image : fetched.image?.uri) ||
               fetched.imageKey ||
               fetched.coverImage;
@@ -229,10 +235,15 @@ export default function EditarEventoGuia({ navigation, route }) {
     const daysInMonth = new Date(yearVal, monthVal, 0).getDate();
 
     if (
-      isNaN(dayVal) || isNaN(monthVal) || isNaN(yearVal) ||
-      monthVal < 1 || monthVal > 12 ||
-      dayVal < 1 || dayVal > daysInMonth ||
-      yearVal < 2024 || yearVal > 2035
+      isNaN(dayVal) ||
+      isNaN(monthVal) ||
+      isNaN(yearVal) ||
+      monthVal < 1 ||
+      monthVal > 12 ||
+      dayVal < 1 ||
+      dayVal > daysInMonth ||
+      yearVal < 2024 ||
+      yearVal > 2035
     ) {
       Alert.alert('Data Inválida', 'Por favor, informe uma data válida no formato dia/mês/ano.');
       return;
@@ -246,9 +257,12 @@ export default function EditarEventoGuia({ navigation, route }) {
     const hourVal = parseInt(partsTime[0], 10);
     const minuteVal = parseInt(partsTime[1], 10);
     if (
-      isNaN(hourVal) || isNaN(minuteVal) ||
-      hourVal < 0 || hourVal > 23 ||
-      minuteVal < 0 || minuteVal > 59
+      isNaN(hourVal) ||
+      isNaN(minuteVal) ||
+      hourVal < 0 ||
+      hourVal > 23 ||
+      minuteVal < 0 ||
+      minuteVal > 59
     ) {
       Alert.alert('Horário Inválido', 'Informe um horário válido entre 00:00 e 23:59.');
       return;
@@ -256,14 +270,19 @@ export default function EditarEventoGuia({ navigation, route }) {
 
     setIsSaving(true);
     try {
-      let finalImageUrl = coverImageUri || initialItem?.imageUrl || initialItem?.imageKey;
-      if (!finalImageUrl && initialItem?.image) {
-        finalImageUrl = typeof initialItem.image === 'string' ? initialItem.image : initialItem.image?.uri;
+      let finalImageUrl =
+        coverImageUri ||
+        initialItem?.imageUrl ||
+        initialItem?.imageKey ||
+        (typeof initialItem?.image === 'string' ? initialItem.image : initialItem?.image?.uri) ||
+        null;
+
+      if (isLocalUri(finalImageUrl)) {
+        finalImageUrl = await uploadImageToCloudinary(finalImageUrl, `arroche/trails/${guideUid}`);
       }
 
-      if (coverImageUri && !coverImageUri.startsWith('http://') && !coverImageUri.startsWith('https://')) {
-        const coverPath = `trails/${guideUid}/cover_${Date.now()}.jpg`;
-        finalImageUrl = await uploadImageToStorage(coverImageUri, coverPath);
+      if (isLocalUri(finalImageUrl)) {
+        throw new Error('A imagem não gerou uma URL pública.');
       }
 
       const formattedDistance = distanceKm ? `${distanceKm} km` : distanceKm;
@@ -282,6 +301,7 @@ export default function EditarEventoGuia({ navigation, route }) {
         capacity: parseInt(capacity.replace(/\D/g, ''), 10) || 12,
         totalSpots: parseInt(capacity.replace(/\D/g, ''), 10) || 12,
         price: parseFloat(price.replace('R$', '').replace(',', '.').trim()) || 0.0,
+        image: finalImageUrl,
         imageUrl: finalImageUrl,
         guideName,
       });
@@ -300,7 +320,10 @@ export default function EditarEventoGuia({ navigation, route }) {
       ]);
     } catch (err) {
       console.error('Erro ao atualizar trilha:', err);
-      Alert.alert('Erro', err?.message || 'Não foi possível atualizar a trilha.');
+      Alert.alert(
+        'Erro ao salvar trilha',
+        err?.message || 'Não foi possível enviar a foto para o Cloudinary ou atualizar a trilha.'
+      );
     } finally {
       setIsSaving(false);
     }
@@ -362,7 +385,7 @@ export default function EditarEventoGuia({ navigation, route }) {
             {coverImageUri ? (
               <Image
                 source={
-                  coverImageUri.startsWith('http') || coverImageUri.startsWith('file:')
+                  coverImageUri.startsWith('http') || isLocalUri(coverImageUri)
                     ? { uri: coverImageUri }
                     : resolveTrailImage(coverImageUri)
                 }

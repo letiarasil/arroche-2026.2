@@ -27,16 +27,38 @@ const withTimeout = (promise, ms = 3000) => {
 
 const localTrailsStore = new Map();
 
+function computeRemainingSpots(data = {}) {
+  const totalSpots = Number(data.totalSpots ?? data.capacity ?? data.vagas ?? 0) || 0;
+  const filledSpots = Number(data.filledSpots ?? 0) || 0;
+
+  if (typeof data.remainingSpots === 'number') {
+    return Math.max(0, data.remainingSpots);
+  }
+  if (typeof data.vagasRestantes === 'number') {
+    return Math.max(0, data.vagasRestantes);
+  }
+  return Math.max(0, totalSpots - filledSpots);
+}
+
 function normalizeTrail(id, data) {
   if (!data) return null;
   const imageResolved = resolveTrailImage(
     data.imageUrl || data.imageKey || data.coverImageKey || data.image || data.coverImage
   );
+  const totalSpots = Number(data.totalSpots ?? data.capacity ?? data.vagas ?? 0) || 0;
+  const filledSpots = Number(data.filledSpots ?? 0) || 0;
+  const remainingSpots = computeRemainingSpots({ ...data, totalSpots, filledSpots });
+
   return {
     ...data,
     id,
     image: imageResolved,
     coverImage: imageResolved,
+    capacity: totalSpots || data.capacity || 0,
+    totalSpots: totalSpots || data.totalSpots || 0,
+    filledSpots,
+    remainingSpots,
+    vagasRestantes: remainingSpots,
   };
 }
 
@@ -54,7 +76,6 @@ function deduplicateSubscriptions(list = []) {
     }
   });
 
-  // Primeiro passo: consolida por ID do documento/inscrição para mesclar campos locais com dados completos do Firestore
   const byDocId = new Map();
   (list || []).forEach((item, idx) => {
     if (!item || item.status === 'cancelada') return;
@@ -93,10 +114,8 @@ function deduplicateSubscriptions(list = []) {
     }
   });
 
-  // Segundo passo: consolida por ID do trilheiro (userId) para impedir mais de 1 linha por conta
   const byHiker = new Map();
   Array.from(byDocId.values()).forEach((item) => {
-    // Ignora registros fantasmas incompletos sem nome, sem userId e sem email
     if (!item.name && !item.userId && !item.email) return;
 
     const hikerId = item.userId || item.uid || item.hikerId;
@@ -138,19 +157,33 @@ function deduplicateSubscriptions(list = []) {
 
 export const saveTrailWithId = async (trailId, trailData) => {
   const trailDoc = doc(db, 'trails', trailId);
+  const normalized = normalizeTrail(trailId, trailData);
   const payload = {
     ...trailData,
     id: trailId,
+    remainingSpots: normalized.remainingSpots,
+    vagasRestantes: normalized.remainingSpots,
+    filledSpots: normalized.filledSpots,
     isActive: trailData.isActive !== false,
     updatedAt: serverTimestamp(),
   };
   await setDoc(trailDoc, payload, { merge: true });
+  localTrailsStore.set(trailId, normalizeTrail(trailId, payload));
   return normalizeTrail(trailId, payload);
 };
 
 export const createTrail = async (trailData) => {
+  const capacityNum = Number(trailData.capacity ?? trailData.totalSpots ?? trailData.vagas ?? 12) || 12;
+  const filledNum = Number(trailData.filledSpots ?? 0) || 0;
+  const remainingNum = Math.max(0, capacityNum - filledNum);
+
   const docRef = await addDoc(TRAILS_REF, {
     ...trailData,
+    capacity: capacityNum,
+    totalSpots: capacityNum,
+    filledSpots: filledNum,
+    remainingSpots: remainingNum,
+    vagasRestantes: remainingNum,
     isActive: true,
     createdAt: serverTimestamp(),
   });
@@ -206,6 +239,24 @@ export const getTrailById = async (trailId) => {
     console.warn('Aviso ao buscar trilha no Firestore, utilizando cache:', err?.message);
   }
   return localTrailsStore.get(trailId) || null;
+};
+
+export const listenTrailById = (trailId, onUpdate) => {
+  if (!trailId) return () => {};
+  const trailRef = doc(db, 'trails', trailId);
+  return onSnapshot(
+    trailRef,
+    (snap) => {
+      if (snap.exists()) {
+        const normalized = normalizeTrail(snap.id, snap.data());
+        localTrailsStore.set(snap.id, normalized);
+        onUpdate?.(normalized);
+      }
+    },
+    (err) => {
+      console.warn('Aviso ao ouvir trilha em tempo real:', err?.message);
+    }
+  );
 };
 
 export const getTrailsByIds = async (trailIds) => {
@@ -330,6 +381,7 @@ export const createGuideTrail = async (guideId, trailData) => {
     capacity: capacityNum,
     totalSpots: capacityNum,
     remainingSpots: capacityNum,
+    vagasRestantes: capacityNum,
     filledSpots: 0,
     price: priceNum,
     formattedPrice: `R$ ${priceNum.toFixed(2).replace('.', ',')}`,
@@ -413,7 +465,10 @@ export const updateGuideTrail = async (trailId, guideId, updateData) => {
 
   const capacityNum = updateData.capacity !== undefined 
     ? parseInt(updateData.capacity, 10) 
-    : (existingData.capacity || 12);
+    : (existingData.capacity || existingData.totalSpots || 12);
+
+  const filledNum = Number(existingData.filledSpots ?? 0) || 0;
+  const remainingNum = Math.max(0, capacityNum - filledNum);
 
   const priceNum = updateData.price !== undefined 
     ? parseFloat(String(updateData.price).replace('R$', '').replace(',', '.').trim()) 
@@ -432,6 +487,9 @@ export const updateGuideTrail = async (trailId, guideId, updateData) => {
     distance: updateData.distance || existingData.distance || '',
     capacity: capacityNum,
     totalSpots: capacityNum,
+    filledSpots: filledNum,
+    remainingSpots: remainingNum,
+    vagasRestantes: remainingNum,
     price: priceNum,
     formattedPrice: `R$ ${priceNum.toFixed(2).replace('.', ',')}`,
     difficulty: updateData.difficulty || existingData.difficulty || 'Fácil',
@@ -532,35 +590,50 @@ export const addTrailSubscription = async (trailId, subscriberData) => {
   if (!trailId) throw new Error('ID da trilha é obrigatório');
 
   const hikerId = subscriberData?.userId || subscriberData?.uid || auth.currentUser?.uid || null;
+  const requestedTickets = Math.max(1, Number(subscriberData?.ticketCount || 1) || 1);
 
-  // 1. Verifica no cache local se o trilheiro já tem inscrição ativa nesta trilha
-  const cachedList = deduplicateSubscriptions(localSubscriptionsCache[trailId] || []);
-  if (hikerId) {
-    const alreadyInCache = cachedList.find(
-      (item) => String(item.userId || item.uid || '') === String(hikerId) && item.status !== 'cancelada'
-    );
-    if (alreadyInCache) {
-      return alreadyInCache;
+  const applyLocalSpotsChange = (deltaFilled) => {
+    const cachedTrail = localTrailsStore.get(trailId);
+    if (cachedTrail) {
+      const currentTotal = Number(cachedTrail.totalSpots ?? cachedTrail.capacity ?? 0) || 0;
+      const currentFilled = Math.max(0, (Number(cachedTrail.filledSpots ?? 0) || 0) + deltaFilled);
+      const currentRemaining = computeRemainingSpots(cachedTrail);
+      const newRemaining =
+        currentTotal > 0
+          ? Math.max(0, Math.min(currentTotal, currentRemaining - deltaFilled))
+          : Math.max(0, currentRemaining - deltaFilled);
+
+      localTrailsStore.set(trailId, {
+        ...cachedTrail,
+        filledSpots: currentFilled,
+        remainingSpots: newRemaining,
+        vagasRestantes: newRemaining,
+      });
     }
-  }
+  };
 
-  // 2. Verifica no Firestore se já existe inscrição ativa desse trilheiro nesta trilha
+  const cachedList = deduplicateSubscriptions(localSubscriptionsCache[trailId] || []);
+
   try {
     const subCol = collection(db, 'trails', trailId, 'subscriptions');
+    let previousActiveTickets = 0;
+
     if (hikerId) {
       const q = query(subCol, where('userId', '==', hikerId));
       const existingSnap = await getDocs(q);
-      const activeDoc = existingSnap.docs.find((d) => d.data()?.status !== 'cancelada');
-      if (activeDoc) {
-        const existingSub = { id: activeDoc.id, ...activeDoc.data() };
-        localSubscriptionsCache[trailId] = deduplicateSubscriptions([
-          existingSub,
-          ...cachedList,
-        ]);
-        notifyLocalSubscriptionListeners(trailId);
-        return existingSub;
+      for (const d of existingSnap.docs) {
+        const dData = d.data() || {};
+        if (dData.status !== 'cancelada') {
+          previousActiveTickets += Math.max(1, Number(dData.ticketCount ?? 1) || 1);
+          await updateDoc(doc(db, 'trails', trailId, 'subscriptions', d.id), {
+            status: 'cancelada',
+            updatedAt: serverTimestamp(),
+          });
+        }
       }
     }
+
+    const netDeltaTickets = requestedTickets - previousActiveTickets;
 
     const localId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const basePayload = {
@@ -570,7 +643,7 @@ export const addTrailSubscription = async (trailId, subscriberData) => {
       name: subscriberData.name || 'Aventureiro',
       email: subscriberData.email || 'aventureiro@arroche.app',
       avatar: subscriberData.avatar || null,
-      ticketCount: subscriberData.ticketCount || 1,
+      ticketCount: requestedTickets,
       present: Boolean(subscriberData.present),
       status: 'confirmada',
     };
@@ -581,7 +654,11 @@ export const addTrailSubscription = async (trailId, subscriberData) => {
       createdAt: new Date().toISOString(),
     };
 
-    localSubscriptionsCache[trailId] = deduplicateSubscriptions([tempPayload, ...cachedList]);
+    const filteredCache = cachedList.filter(
+      (item) => String(item.userId || item.uid || '') !== String(hikerId)
+    );
+    localSubscriptionsCache[trailId] = deduplicateSubscriptions([tempPayload, ...filteredCache]);
+    applyLocalSpotsChange(netDeltaTickets);
     notifyLocalSubscriptionListeners(trailId);
 
     const docRef = await addDoc(subCol, {
@@ -603,11 +680,30 @@ export const addTrailSubscription = async (trailId, subscriberData) => {
     const trailRef = doc(db, 'trails', trailId);
     const snap = await getDoc(trailRef);
     if (snap.exists()) {
-      const currentFilled = snap.data().filledSpots || 0;
+      const tData = snap.data();
+      const totalSpots = Number(tData.totalSpots ?? tData.capacity ?? 0) || 0;
+      const currentFilled = Number(tData.filledSpots ?? 0) || 0;
+      const currentRemaining = computeRemainingSpots(tData);
+
+      const newFilled = Math.max(0, currentFilled + netDeltaTickets);
+      const newRemaining =
+        totalSpots > 0
+          ? Math.max(0, Math.min(totalSpots, currentRemaining - netDeltaTickets))
+          : Math.max(0, currentRemaining - netDeltaTickets);
+
       await updateDoc(trailRef, {
-        filledSpots: currentFilled + (basePayload.ticketCount || 1),
+        filledSpots: newFilled,
+        remainingSpots: newRemaining,
+        vagasRestantes: newRemaining,
         updatedAt: serverTimestamp(),
       });
+
+      localTrailsStore.set(trailId, normalizeTrail(trailId, {
+        ...tData,
+        filledSpots: newFilled,
+        remainingSpots: newRemaining,
+        vagasRestantes: newRemaining,
+      }));
     }
 
     return persistedItem;
@@ -621,13 +717,14 @@ export const addTrailSubscription = async (trailId, subscriberData) => {
       name: subscriberData.name || 'Aventureiro',
       email: subscriberData.email || 'aventureiro@arroche.app',
       avatar: subscriberData.avatar || null,
-      ticketCount: subscriberData.ticketCount || 1,
+      ticketCount: requestedTickets,
       present: Boolean(subscriberData.present),
       status: 'confirmada',
       createdAt: new Date().toISOString(),
     };
 
     localSubscriptionsCache[trailId] = deduplicateSubscriptions([fallbackPayload, ...cachedList]);
+    applyLocalSpotsChange(requestedTickets);
     notifyLocalSubscriptionListeners(trailId);
     console.warn('Inscrição registrada em cache local para Lista de Frequência:', firestoreErr?.message);
     return fallbackPayload;
@@ -688,36 +785,86 @@ export const listenTrailSubscriptions = (trailId, onUpdate, onError) => {
 export const cancelTrailSubscription = async (trailId, userId, ticketCount = 1) => {
   if (!trailId) throw new Error('ID da trilha é obrigatório');
   const currentUid = userId || auth.currentUser?.uid;
+  const fallbackTickets = Math.max(1, Number(ticketCount || 1) || 1);
+  let ticketsToRestore = 0;
 
   try {
+    if (localSubscriptionsCache[trailId]) {
+      const cachedSubs = localSubscriptionsCache[trailId].filter(
+        (item) => String(item.userId || item.uid || '') === String(currentUid) && item.status !== 'cancelada'
+      );
+      if (cachedSubs.length > 0) {
+        ticketsToRestore = cachedSubs.reduce(
+          (sum, item) => sum + Math.max(1, Number(item.ticketCount ?? 1) || 1),
+          0
+        );
+      }
+    }
+
     const subCol = collection(db, 'trails', trailId, 'subscriptions');
     const q = query(subCol, where('userId', '==', currentUid));
     const snap = await getDocs(q);
 
+    let firestoreTickets = 0;
     for (const docSnap of snap.docs) {
+      const subData = docSnap.data() || {};
+      if (subData.status !== 'cancelada') {
+        firestoreTickets += Math.max(1, Number(subData.ticketCount ?? 1) || 1);
+      }
+
       await updateDoc(doc(db, 'trails', trailId, 'subscriptions', docSnap.id), {
         status: 'cancelada',
         updatedAt: serverTimestamp(),
       });
     }
 
+    if (firestoreTickets > 0) {
+      ticketsToRestore = firestoreTickets;
+    } else if (ticketsToRestore <= 0) {
+      ticketsToRestore = fallbackTickets;
+    }
+
     if (localSubscriptionsCache[trailId]) {
       localSubscriptionsCache[trailId] = localSubscriptionsCache[trailId].filter(
-        (item) => item.userId !== currentUid
+        (item) => String(item.userId || item.uid || '') !== String(currentUid)
       );
       notifyLocalSubscriptionListeners(trailId);
     }
 
+    let finalRemaining = null;
     const trailRef = doc(db, 'trails', trailId);
     const trailSnap = await getDoc(trailRef);
     if (trailSnap.exists()) {
-      const currentFilled = trailSnap.data().filledSpots || 0;
-      const newFilled = Math.max(0, currentFilled - ticketCount);
+      const tData = trailSnap.data();
+      const currentFilled = Number(tData.filledSpots ?? 0) || 0;
+      const totalSpots = Number(tData.totalSpots ?? tData.capacity ?? 0) || 0;
+      const newFilled = Math.max(0, currentFilled - ticketsToRestore);
+      const currentRemaining = computeRemainingSpots(tData);
+      const newRemaining =
+        totalSpots > 0
+          ? Math.min(totalSpots, currentRemaining + ticketsToRestore)
+          : currentRemaining + ticketsToRestore;
+
       await updateDoc(trailRef, {
         filledSpots: newFilled,
+        remainingSpots: newRemaining,
+        vagasRestantes: newRemaining,
         updatedAt: serverTimestamp(),
       });
+
+      finalRemaining = newRemaining;
+      localTrailsStore.set(trailId, normalizeTrail(trailId, {
+        ...tData,
+        filledSpots: newFilled,
+        remainingSpots: newRemaining,
+        vagasRestantes: newRemaining,
+      }));
     }
+
+    return {
+      restoredTickets: ticketsToRestore,
+      remainingSpots: finalRemaining,
+    };
   } catch (err) {
     console.warn('Erro ao cancelar inscrição no Firestore:', err?.message);
     throw err;

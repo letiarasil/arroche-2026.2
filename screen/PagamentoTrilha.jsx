@@ -10,7 +10,6 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
-  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
@@ -23,7 +22,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { auth, db } from '../services/firebase';
 import { addTrailSubscription, getTrailById } from '../services/trailService';
 
-// Ícone SVG de Cartão de Crédito
 function CardIcon({ size = 22, color = '#3B82F6' }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -37,8 +35,10 @@ function CardIcon({ size = 22, color = '#3B82F6' }) {
 
 export default function PagamentoTrilha({ navigation, route }) {
   const routeParams = route?.params || {};
-  const [event, setEvent] = useState(() => routeParams.event || routeParams.item || { id: routeParams.eventId, title: 'Trilha', price: 10.0 });
-  const ticketCount = routeParams.ticketCount || 1;
+  const [event, setEvent] = useState(
+    () => routeParams.event || routeParams.item || { id: routeParams.eventId, title: 'Trilha', price: 10.0 }
+  );
+  const ticketCount = Math.max(1, Number(routeParams.ticketCount ?? 1) || 1);
 
   useEffect(() => {
     if (!routeParams.event && routeParams.eventId) {
@@ -51,16 +51,13 @@ export default function PagamentoTrilha({ navigation, route }) {
   const { user, userProfile } = useAuth();
   const { subscribeToTrail } = useSubscriptions();
 
-  // Seleção da forma de pagamento: 'pix' ou 'card'
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Controle dos Modais
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
 
-  // Cálculos de valores (Subtotal, Taxa de serviço e Total)
-  const basePricePerTicket = event.price || 10.0;
+  const basePricePerTicket = Number(event?.price) || 10.0;
   const rawTotal = basePricePerTicket * ticketCount;
   const serviceFee = 1.0;
   const subTotal = Math.max(0, rawTotal - serviceFee);
@@ -69,19 +66,33 @@ export default function PagamentoTrilha({ navigation, route }) {
   const formattedServiceFee = serviceFee.toFixed(2).replace('.', ',');
   const formattedTotal = rawTotal.toFixed(2).replace('.', ',');
 
-  // 1. Processa o pagamento e persiste no Firestore + contexto
   const handleFinalizePayment = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
 
-    try {
-      const trailId = event.id || event.trailId;
-      const currentUserId = auth.currentUser?.uid || user?.uid || 'trilheiro_app';
-      const currentUserName = userProfile?.name || auth.currentUser?.displayName || 'Aventureiro';
-      const currentUserEmail = userProfile?.email || auth.currentUser?.email || 'aventureiro@arroche.app';
-      const currentUserAvatar = userProfile?.avatarUrl || userProfile?.avatar || auth.currentUser?.photoURL || null;
+    const trailId = event?.id || event?.trailId || routeParams.eventId;
+    const currentUserId = auth.currentUser?.uid || user?.uid || 'trilheiro_app';
+    const currentUserName = userProfile?.name || auth.currentUser?.displayName || 'Aventureiro';
+    const currentUserEmail = userProfile?.email || auth.currentUser?.email || 'aventureiro@arroche.app';
+    const currentUserAvatar =
+      userProfile?.avatarUrl || userProfile?.avatar || auth.currentUser?.photoURL || null;
 
-      // Grava a inscrição do usuário na subcoleção da trilha e no documento do próprio usuário
+    const currentRemaining =
+      typeof event?.remainingSpots === 'number'
+        ? Math.max(0, event.remainingSpots)
+        : typeof event?.vagasRestantes === 'number'
+          ? Math.max(0, event.vagasRestantes)
+          : Math.max(0, (Number(event?.totalSpots ?? event?.capacity ?? 12) || 12) - (Number(event?.filledSpots ?? 0) || 0));
+
+    const updatedRemaining = Math.max(0, currentRemaining - ticketCount);
+    const updatedEvent = {
+      ...event,
+      remainingSpots: updatedRemaining,
+      vagasRestantes: updatedRemaining,
+      filledSpots: (Number(event?.filledSpots ?? 0) || 0) + ticketCount,
+    };
+
+    try {
       if (trailId) {
         await addTrailSubscription(trailId, {
           userId: currentUserId,
@@ -94,7 +105,6 @@ export default function PagamentoTrilha({ navigation, route }) {
           status: 'confirmada',
         });
 
-        // Salva o ID da trilha diretamente no perfil do usuário no Firestore
         if (currentUserId && currentUserId !== 'trilheiro_app') {
           const userRef = doc(db, 'users', currentUserId);
           await setDoc(
@@ -107,28 +117,24 @@ export default function PagamentoTrilha({ navigation, route }) {
         }
       }
 
-      // Inscreve a trilha na lista do usuário no contexto
-      subscribeToTrail(event, { ticketCount });
-
-      // Abre o 1º modal: Deu certo + aviso de cancelamento
+      setEvent(updatedEvent);
+      subscribeToTrail(updatedEvent, { ticketCount });
       setShowSuccessModal(true);
     } catch (err) {
       console.warn('Aviso durante finalização da inscrição:', err?.message || err);
-      // Garante que o fluxo de inscrição conclua perfeitamente no mockup/app
-      subscribeToTrail(event, { ticketCount });
+      setEvent(updatedEvent);
+      subscribeToTrail(updatedEvent, { ticketCount });
       setShowSuccessModal(true);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // 2. Transiciona do 1º Modal para o 2º Modal (Parabéns + Dicas da Trilha)
   const handleAdvanceToTipsModal = () => {
     setShowSuccessModal(false);
     setShowConfirmationModal(true);
   };
 
-  // 3. Ações do Modal de Dicas
   const handleGoToTipsScreen = () => {
     setShowConfirmationModal(false);
     navigation?.navigate('DicasTrilha', {
@@ -139,7 +145,6 @@ export default function PagamentoTrilha({ navigation, route }) {
 
   const handleCloseAllAndStay = () => {
     setShowConfirmationModal(false);
-    // Vai para Minhas Trilhas após concluir a inscrição
     navigation?.reset({
       index: 1,
       routes: [
@@ -153,7 +158,6 @@ export default function PagamentoTrilha({ navigation, route }) {
     <View style={styles.screenContainer}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Header Superior com Botão Voltar */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -171,7 +175,6 @@ export default function PagamentoTrilha({ navigation, route }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Informações da Trilha */}
         <View style={styles.eventInfoSection}>
           <Text style={styles.eventTitle}>{event.title}</Text>
 
@@ -191,7 +194,6 @@ export default function PagamentoTrilha({ navigation, route }) {
             <Text style={styles.departureValue}>{event.departureLocation}</Text>
           </View>
 
-          {/* Grid de Estatísticas */}
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>Data</Text>
@@ -215,11 +217,9 @@ export default function PagamentoTrilha({ navigation, route }) {
           </View>
         </View>
 
-        {/* Formas de Pagamento */}
         <View style={styles.paymentSection}>
           <Text style={styles.sectionTitle}>Formas de pagamento</Text>
 
-          {/* Opção PIX */}
           <TouchableOpacity
             style={[
               styles.paymentOptionCard,
@@ -245,7 +245,6 @@ export default function PagamentoTrilha({ navigation, route }) {
             </View>
           </TouchableOpacity>
 
-          {/* Opção Cartão */}
           <TouchableOpacity
             style={[
               styles.paymentOptionCard,
@@ -269,7 +268,6 @@ export default function PagamentoTrilha({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {/* Resumo dos Valores */}
         <View style={styles.summarySection}>
           <Text style={styles.sectionTitle}>Resumo dos Valores:</Text>
 
@@ -293,7 +291,6 @@ export default function PagamentoTrilha({ navigation, route }) {
           Você pode cancelar sua reserva até 2 dias antes da realização da trilha e receber o reembolso do valor pago.
         </Text>
 
-        {/* Botão Finalizar */}
         <TouchableOpacity
           style={[styles.finalizeButton, isProcessing && styles.finalizeButtonDisabled]}
           onPress={handleFinalizePayment}
@@ -310,12 +307,8 @@ export default function PagamentoTrilha({ navigation, route }) {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Menu Inferior Padrão */}
       <Menu activeTab="Trilhas" navigation={navigation} />
 
-      {/* ============================================================ */}
-      {/* 1º MODAL: CONFIRMAÇÃO DE PAGAMENTO & REEMBOLSO */}
-      {/* ============================================================ */}
       <Modal
         visible={showSuccessModal}
         transparent
@@ -348,9 +341,6 @@ export default function PagamentoTrilha({ navigation, route }) {
         </View>
       </Modal>
 
-      {/* ============================================================ */}
-      {/* 2º MODAL: DICAS E PREPARAÇÃO DA TRILHA */}
-      {/* ============================================================ */}
       <Modal
         visible={showConfirmationModal}
         transparent
